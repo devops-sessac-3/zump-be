@@ -1,0 +1,17 @@
+{
+    "DEBUG_MODE": true,
+    "API_SETTING": {
+    "TITLE": "ZUMP API",
+    "DESCRIPTION": "ZUMP REST API",
+    "VERSION": "0.0.1"
+    },
+    "DATABASE_ZUMP": {
+    "HOST": "localhost",
+    "PORT": 5432,
+    "READ_PORT": 5432,
+    "DB_NAME": "zump",
+    "USERNAME": "postgres",
+    "PASSWORD": "pass",
+    "CLIENT_ENCODING": ""
+    }
+}
