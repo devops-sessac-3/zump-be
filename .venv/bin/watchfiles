@@ -1,4 +1,4 @@
-#!/Users/jinyoung/Desktop/sesacapi/.venv/bin/python3.11
+#!/Users/jinyoung/Desktop/zump-be/.venv/bin/python3.11
 # -*- coding: utf-8 -*-
 import re
 import sys
