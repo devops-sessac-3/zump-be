@@ -6,7 +6,7 @@
 ## 가상환경 접속
 ```sh
 python -m venv .venv
-source .venv/bin/active
+source .venv/bin/activate
 ```
 
 ## 패키지 라이브러리 설치
