@@ -41,12 +41,11 @@ async def post_user_login(db: AsyncSession, user_id: str, user_pw: str):
         "user_pw": security_user_pw,
     }
     access_token = oauth.create_jwt_token(data)
-    return schema.Token(**{"access_token": f"bearer {access_token}"})
-
+    return schema.Token(**{"access_token": f"{access_token}"})
 
 async def get(self, db: AsyncSession, config_name):
     try:
         account = await self.get_account(db)
-        return [x for x in account if x.nick_nm == config_name]
+        return [x for x in account if x.nick_nm == config_name] 
     except KeyError:
         return None
