@@ -13,6 +13,7 @@ from fastapi.exceptions import RequestValidationError
 from utils import exception
 from utils.config import config
 from routers import user_router    # 회원 관련 API 라우터 (예: /auth/signup)
+from routers import concert_router # 공연 관련 API 라우터 (예: /concerts)
 
 api_config = config.get_config("API_SETTING")
 
@@ -33,7 +34,8 @@ app.add_middleware(
 )
 
 # 라우터 등록
-app.include_router(user_router.router)  # 회원가입/로그인 관련 API 라우터
+app.include_router(user_router.router)   # 회원가입/로그인 관련 API 라우터
+app.include_router(concert_router.router)  # 공연 리스트/상세 API 라우터
 
 # 글로벌 예외 처리
 @app.exception_handler(RequestValidationError)

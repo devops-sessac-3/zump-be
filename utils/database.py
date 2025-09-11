@@ -100,6 +100,36 @@ async def execute_post_async(db: AsyncSession, sql: str, params: dict[str, Any])
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e)
         )
 
+async def execute_post_multi_async(db: AsyncSession, sql_list: list[dict[str, any]], schema: any = None) -> list[any]:
+    """
+    # Postgresql DB 전용 asyncpg 라이브러리에서 사용
+    비동기 db sql을 실행하여 결과값을 스키마에 맞춰 반환하는 함수입니다.
+    """
+    try:
+        # 트랜잭션을 시작합니다.
+        async with db.begin():  # 트랜잭션을 자동으로 커밋 및 롤백 처리
+            results = []
+            # 결과 반환        
+            for item in sql_list:
+                sql = item.pop("sql")
+                params = item.pop("params")
+                
+                # SQL 쿼리 실행
+                query_result = await db.execute(text(sql), params)
+                
+                result = None
+                if schema is not None:
+                    result = [schema(**row._mapping) for row in query_result]
+                else:
+                    result = query_result
+                
+                results.append(result)
+                
+            return results
+    except Exception as e:
+        # 에러 발생 시 롤백은 async with db.begin()에서 자동으로 처리됨
+        raise e
+
 debug_mode = config.get_config("DEBUG_MODE")
 
 

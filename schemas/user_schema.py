@@ -6,6 +6,7 @@ from fastapi import Form
 class payload_user_signup(BaseModel):
     user_email : str = Field(..., description="이메일")
     user_password : str = Field(..., description="비밀번호")
+    user_name : str = Field(None, description="이름")
     class Config:
         from_attributes = True
     
