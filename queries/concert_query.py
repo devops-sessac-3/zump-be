@@ -38,12 +38,13 @@ def get_concert_detail(concert_se: int):
             s.seat_number,
             s.is_booked
         FROM concert_booking b
-        JOIN users u
+        INNER JOIN users u
             ON b.user_se = u.user_se
-        JOIN concerts c
+        INNER JOIN concerts c
             ON b.concert_se = c.concert_se
-        JOIN concerts_seat s
-            ON b.seat_se = s.seat_se
+        INNER JOIN concerts_seat s
+            ON b.concert_se = s.concert_se
+            AND b.seat_number = s.seat_number
         WHERE b.concert_se = :concert_se
         ORDER BY b.create_dt;
         """
@@ -52,15 +53,13 @@ def get_concert_detail(concert_se: int):
     sql_query = "\n".join(sql_parts)
     return sql_query, params
 
-
-
 def post_concert_booking(payload: schema.payload_concert_booking):
     sql_parts = [
         f"""
         { queries.get_query_anchors() }
         WITH inserted AS (
-            INSERT INTO concert_booking (user_se, concert_se, seat_se)
-            VALUES (:user_se, :concert_se, :seat_se)
+            INSERT INTO concert_booking (user_se, concert_se, seat_number)
+            VALUES (:user_se, :concert_se, :seat_number)
             RETURNING booking_se, concert_se, user_se, create_dt
         )
         SELECT s.seat_se, s.seat_number, s.is_booked
@@ -68,72 +67,6 @@ def post_concert_booking(payload: schema.payload_concert_booking):
         JOIN concerts_seat s ON s.concert_se = c.concert_se;
         """
     ]
-    params = {"user_se": payload.user_se, "concert_se": payload.concert_se, "seat_se": payload.seat_se }
+    params = {"user_se": payload.user_se, "concert_se": payload.concert_se, "seat_number": payload.seat_number }
     sql_query = "\n".join(sql_parts)
     return sql_query, params
-
-
-# def post_concert_booking(payload: schema.payload_concert_booking):
-#     sql_list = [
-#         {
-#             "sql": f"""
-#                 { queries.get_query_anchors() }
-#                 WITH inserted AS (
-#                     INSERT INTO concert_booking (user_se, concert_se)
-#                     VALUES (:user_se, :concert_se)
-#                     RETURNING booking_se, concert_se, user_se, create_dt
-#                 )
-#                 SELECT i.booking_se, i.concert_se, i.user_se, i.create_dt,
-#                        s.seat_se, s.seat_number, s.is_booked
-#                 FROM inserted i
-#                 JOIN concerts_seat s ON s.concert_se = i.concert_se;
-#             """,
-#             "params": {
-#                 "user_se": payload.user_se,
-#                 "concert_se": payload.concert_se
-#             }
-#         }
-#     ]
-#     return sql_list
-
-
-
-# def post_concert_booking(payload: schema.payload_concert_booking):
-#     sql_list = [
-#         {
-#             "sql": f"""
-#                 {queries.get_query_anchors()}
-#                 INSERT INTO concert_booking (user_se, concert_se)
-#                 VALUES (:user_se, :concert_se)
-#                 RETURNING booking_se, concert_se, user_se, create_dt;
-#             """,
-#             "params": {
-#                 "user_se": payload.user_se,
-#                 "concert_se": payload.concert_se,
-#             }
-#         },
-#         {
-#             "sql": f"""
-#                 {queries.get_query_anchors()}
-#                 UPDATE concerts_seat
-#                 SET is_booked = 'true'
-#                 WHERE seat_se = :seat_se
-#             """,
-#             "params": {
-#                 "seat_se": payload.seat_se,
-#             },
-            
-#             "sql": f"""
-#                 {queries.get_query_anchors()}
-#                 SELECT s.seat_se, s.seat_number, s.is_booked
-#                 FROM concerts_seat s
-#                 JOIN concert_booking b ON b.concert_se = s.concert_se
-#                 WHERE b.booking_se = :booking_se;
-#             """,
-#             "params": {
-#                 "seat_se": payload.seat_se,
-#             },
-#         }
-#     ]
-
-#     return sql_list

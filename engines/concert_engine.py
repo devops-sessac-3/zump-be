@@ -17,11 +17,9 @@ async def get_concerts(db: AsyncSession):
 
 async def get_concert_detail(db: AsyncSession, concert_se: int):
     sql_query, params = query.get_concert_detail(concert_se)
-    result_list = await execute_query_async(db, sql=sql_query, params=params, schema=schema.concert)
-    if not result_list:
-        from fastapi import HTTPException
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not Found (Concert not found)")
-    return result_list[0]
+    result_list = await execute_query_async(db, sql=sql_query, params=params, schema=schema.concert_detail)
+
+    return result_list
     
 async def post_concert_booking(db: AsyncSession, payload: schema.payload_concert_booking):
     sql_query, params = query.post_concert_booking(payload)
