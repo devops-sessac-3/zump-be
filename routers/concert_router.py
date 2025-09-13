@@ -44,6 +44,41 @@ async def get_detail(
         return response
     except HTTPException as ex:
         return await exception.handle_exception(ex, req, __file__)
+
+@router.get(
+    "/concerts/{concert_se}/seats",
+    summary="공연 좌석 상태 조회"
+    , response_model=List[dict]
+    , responses={**(exception.get_responses([200, 400, 401, 403, 404, 500]))}
+)
+async def get_seats(
+    req: Request
+    , concert_se: int
+    , db: AsyncSession = Depends(db_zump_async)
+):
+    try:
+        response = await engine.get_concert_seats(db, concert_se)
+        return response
+    except HTTPException as ex:
+        return await exception.handle_exception(ex, req, __file__)
+
+@router.get(
+    "/concerts/{concert_se}/seats/{seat_number}",
+    summary="특정 좌석 상태 조회"
+    , response_model=dict
+    , responses={**(exception.get_responses([200, 400, 401, 403, 404, 500]))}
+)
+async def get_seat_state(
+    req: Request
+    , concert_se: int
+    , seat_number: int
+    , db: AsyncSession = Depends(db_zump_async)
+):
+    try:
+        response = await engine.get_seat_state(db, concert_se, seat_number)
+        return response
+    except HTTPException as ex:
+        return await exception.handle_exception(ex, req, __file__)
     
 @router.post(
     "/concerts-booking",

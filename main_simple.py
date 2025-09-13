@@ -1,6 +1,7 @@
 #####################################################################
-# Zump API Main
-# 실행 : uvicorn main:app --reload 
+# ZUMP API Main (Simple Version)
+# Redis, Kafka 없이 기본 기능만 테스트
+# 실행 : uvicorn main_simple:app --reload 
 # Swagger : http://127.0.0.1:8000/docs
 # ReDoc : http://127.0.0.1:8000/redoc
 #####################################################################
@@ -13,13 +14,8 @@ from contextlib import asynccontextmanager
 # 내부 모듈 import
 from utils import exception
 from utils.config import config
-from utils.redis_client import redis_client
-from utils.kafka_client import event_manager
-from utils.sse_manager import sse_event_processor
-# from utils.db_change_detector import db_change_detector
 from routers import user_router    # 회원 관련 API 라우터 (예: /auth/signup)
 from routers import concert_router # 공연 관련 API 라우터 (예: /concerts)
-from routers import sse_router     # SSE 실시간 이벤트 라우터
 
 api_config = config.get_config("API_SETTING")
 
@@ -27,34 +23,10 @@ api_config = config.get_config("API_SETTING")
 async def lifespan(app: FastAPI):
     """앱 시작/종료 시 실행되는 함수"""
     # 시작 시
-    await redis_client.connect()
-    print("Redis 연결 완료")
-    
-    await event_manager.initialize()
-    print("Kafka EventManager 초기화 완료")
-    
-    await sse_event_processor.start()
-    print("SSE EventProcessor 시작 완료")
-    
-    # 데이터베이스 변경 감지기 초기화
-    # db_config = config.get_config("DATABASE_ZUMP")
-    # await db_change_detector.initialize(db_config)
-    # await db_change_detector.start_listening()
-    # print("데이터베이스 변경 감지기 시작 완료")
-    
+    print("ZUMP API 서버 시작")
     yield
     # 종료 시
-    # await db_change_detector.stop_listening()
-    # print("데이터베이스 변경 감지기 중지 완료")
-    
-    await sse_event_processor.stop()
-    print("SSE EventProcessor 중지 완료")
-    
-    await event_manager.shutdown()
-    print("Kafka EventManager 종료 완료")
-    
-    await redis_client.disconnect()
-    print("Redis 연결 해제")
+    print("ZUMP API 서버 종료")
 
 # FastAPI 앱 생성
 app = FastAPI(
@@ -76,9 +48,13 @@ app.add_middleware(
 # 라우터 등록
 app.include_router(user_router.router)   # 회원가입/로그인 관련 API 라우터
 app.include_router(concert_router.router)  # 공연 리스트/상세 API 라우터
-app.include_router(sse_router.router, prefix="/api/v1")  # SSE 실시간 이벤트 라우터
 
 # 글로벌 예외 처리
 @app.exception_handler(RequestValidationError)
 async def validation_exception_handler(request: Request, exc):
     raise exception.get(status_code=422)
+
+# 헬스 체크 엔드포인트
+@app.get("/health")
+async def health_check():
+    return {"status": "healthy", "message": "ZUMP API is running"}
