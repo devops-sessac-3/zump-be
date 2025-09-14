@@ -36,11 +36,11 @@ async def get(
 )
 async def get_detail(
     req: Request
-    , consert_se: int
+    , concert_se: int
     , db: AsyncSession = Depends(db_zump_async)
 ):
     try:
-        response = await engine.get_concert_detail(db, consert_se)
+        response = await engine.get_concert_detail(db, concert_se)
         return response
     except HTTPException as ex:
         return await exception.handle_exception(ex, req, __file__)
@@ -48,7 +48,7 @@ async def get_detail(
 @router.post(
     "/concerts-booking",
     summary="콘서트 예매"
-    , response_model=List[schema.concert]
+    , response_model=List[schema.concerts_seat]
     , responses={**(exception.get_responses([200, 400, 401, 403, 404, 500]))}   
 )
 async def post(

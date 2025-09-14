@@ -22,11 +22,6 @@ def get_concert_detail(concert_se: int):
         f"""
         { queries.get_query_anchors() }
         SELECT 
-            b.booking_se,
-            b.create_dt,
-            u.user_se,
-            u.user_name,
-            u.user_email,
             c.concert_se,
             c.concert_name,
             c.concert_date,
@@ -34,19 +29,20 @@ def get_concert_detail(concert_se: int):
             c.concert_price,
             c.concert_description,
             c.concert_venue,
-            s.seat_se,
-            s.seat_number,
-            s.is_booked
-        FROM concert_booking b
-        INNER JOIN users u
-            ON b.user_se = u.user_se
-        INNER JOIN concerts c
-            ON b.concert_se = c.concert_se
-        INNER JOIN concerts_seat s
-            ON b.concert_se = s.concert_se
-            AND b.seat_number = s.seat_number
-        WHERE b.concert_se = :concert_se
-        ORDER BY b.create_dt;
+            JSON_AGG(
+                JSON_BUILD_OBJECT(
+                    'seat_se', s.seat_se,
+                    'seat_number', s.seat_number,
+                    'is_booked', s.is_booked
+                ) ORDER BY s.seat_number
+            ) AS seats
+        FROM concerts c
+        LEFT JOIN concerts_seat s
+        ON c.concert_se = s.concert_se
+        WHERE c.concert_se = :concert_se
+        GROUP BY 
+            c.concert_se, c.concert_name, c.concert_date, c.concert_time,
+            c.concert_price, c.concert_description, c.concert_venue;
         """
     ]
     params = {"concert_se": concert_se}
@@ -60,11 +56,16 @@ def post_concert_booking(payload: schema.payload_concert_booking):
         WITH inserted AS (
             INSERT INTO concert_booking (user_se, concert_se, seat_number)
             VALUES (:user_se, :concert_se, :seat_number)
-            RETURNING booking_se, concert_se, user_se, create_dt
+            RETURNING booking_se, concert_se, user_se, seat_number, create_dt
+        ), updated AS (
+            UPDATE concerts_seat
+            SET is_booked = TRUE
+            WHERE concert_se = (SELECT concert_se FROM inserted)
+              AND seat_number = (SELECT seat_number FROM inserted)
+            RETURNING seat_se, seat_number, is_booked
         )
-        SELECT s.seat_se, s.seat_number, s.is_booked
-        FROM concerts c
-        JOIN concerts_seat s ON s.concert_se = c.concert_se;
+        SELECT u.seat_se, u.seat_number, u.is_booked
+        FROM updated u;
         """
     ]
     params = {"user_se": payload.user_se, "concert_se": payload.concert_se, "seat_number": payload.seat_number }

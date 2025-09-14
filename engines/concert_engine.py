@@ -24,9 +24,9 @@ async def get_concert_detail(db: AsyncSession, concert_se: int):
 async def post_concert_booking(db: AsyncSession, payload: schema.payload_concert_booking):
     sql_query, params = query.post_concert_booking(payload)
     
-    await execute_post_async(db, sql=sql_query, params=params)
-    ret = Response(messsage.DATA_CREATE)
-    ret.status_code = status.HTTP_201_CREATED
-    return ret
+    result_list = await execute_query_async(db, sql=sql_query, params=params, schema=schema.concerts_seat)
+    # ret = Response(messsage.DATA_CREATE)
+    # ret.status_code = status.HTTP_201_CREATED
+    return result_list
     
     
