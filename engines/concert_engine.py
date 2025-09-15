@@ -1,4 +1,4 @@
-from fastapi import status, Response
+from fastapi import status, Response, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from schemas import concert_schema as schema
 from queries import concert_query as query
