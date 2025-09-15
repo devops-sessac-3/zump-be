@@ -29,7 +29,7 @@ async def get(
         return await exception.handle_exception(ex, req, __file__)
 
 @router.get(
-    "/concerts/{consert_se}",
+    "/concerts/{concert_se}",
     summary="콘서트 상세 조회"
     , response_model=List[schema.concert_detail]
     , responses={**(exception.get_responses([200, 400, 401, 403, 404, 500]))}
