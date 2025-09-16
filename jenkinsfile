@@ -1,0 +1,51 @@
+pipeline {
+    agent any
+    triggers {
+        githubPush()
+    }
+    environment {
+        DOCKER_IMAGE_LOCAL = 'zump-api-amd64'
+        DOCKER_IMAGE_REMOTE = 'sessaczump/zump-api-amd64:latest'
+    }
+    stages {
+        stage('Checkout') {
+            steps {
+                git branch: 'main', credentialsId: 'gittoken', url: 'https://github.com/devops-sessac-3/zump-be.git'
+            }
+        }
+        stage('Docker login') {
+            steps {
+                withCredentials([usernamePassword(credentialsId: 'dockerhub', usernameVariable: 'DOCKER_USERNAME', passwordVariable: 'DOCKER_PASSWORD')]) {
+                    sh 'echo $DOCKER_PASSWORD | docker login --username=$DOCKER_USERNAME --password-stdin'
+                }
+            }
+        }
+        stage('Build AMD64 image') {
+            when {
+                anyOf { branch 'main'; expression { env.BRANCH_NAME == 'main' || env.GIT_BRANCH == 'refs/heads/main' || env.GIT_BRANCH == 'origin/main' } }
+            }
+            steps {
+                sh 'docker buildx create --use --name builder || docker buildx use builder'
+                sh 'docker buildx inspect --bootstrap | cat'
+                sh 'docker buildx build --platform linux/amd64 -t ${DOCKER_IMAGE_LOCAL} --load .'
+            }
+        }
+        stage('Tag and Push image') {
+            when {
+                anyOf { branch 'main'; expression { env.BRANCH_NAME == 'main' || env.GIT_BRANCH == 'refs/heads/main' || env.GIT_BRANCH == 'origin/main' } }
+            }
+            steps {
+                sh 'docker tag ${DOCKER_IMAGE_LOCAL} ${DOCKER_IMAGE_REMOTE}'
+                sh 'docker push ${DOCKER_IMAGE_REMOTE}'
+            }
+        }
+        stage('Cleanup') {
+            when {
+                anyOf { branch 'main'; expression { env.BRANCH_NAME == 'main' || env.GIT_BRANCH == 'refs/heads/main' || env.GIT_BRANCH == 'origin/main' } }
+            }
+            steps {
+                sh 'docker rmi ${DOCKER_IMAGE_LOCAL} || true'
+            }
+        }
+    }
+}
