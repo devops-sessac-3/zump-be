@@ -1,0 +1,105 @@
+// Jenkinsfile for Buildah
+pipeline {
+    agent {
+        kubernetes {
+            yaml '''
+apiVersion: v1
+kind: Pod
+metadata:
+  labels:
+    jenkins: "agent"
+spec:
+  restartPolicy: Never
+  nodeSelector:
+    kubernetes.io/os: linux
+  securityContext:
+    runAsUser: 0
+  volumes:
+    - name: workspace-volume
+      emptyDir: {}
+  containers:
+    - name: buildah
+      image: quay.io/buildah/stable:v1.34.0
+      securityContext:
+        privileged: true
+      env:
+        - name: STORAGE_DRIVER
+          value: vfs
+      command: ['cat']
+      tty: true
+      volumeMounts:
+        - name: workspace-volume
+          mountPath: /home/jenkins/agent
+    - name: jnlp
+      image: jenkins/inbound-agent:3327.v868139a_d00e0-6
+      env:
+        - name: JENKINS_AGENT_WORKDIR
+          value: /home/jenkins/agent
+      volumeMounts:
+        - name: workspace-volume
+          mountPath: /home/jenkins/agent
+'''
+        }
+    }
+    triggers {
+        githubPush()
+    }
+    options {
+        disableConcurrentBuilds()
+        skipDefaultCheckout(true)
+    }
+    environment {
+        DOCKER_IMAGE_REMOTE = 'sessaczump/zump-api-amd64:latest'
+    }
+    stages {
+        stage('Checkout') {
+            steps {
+                checkout scm
+            }
+        }
+        stage('Registry login') {
+            steps {
+                withCredentials([usernamePassword(credentialsId: 'dockerhub', usernameVariable: 'REG_USERNAME', passwordVariable: 'REG_PASSWORD')]) {
+                    container('buildah') {
+                        sh '''
+                            echo "$REG_PASSWORD" | buildah login --username "$REG_USERNAME" --password-stdin docker.io
+                        '''
+                    }
+                }
+            }
+        }
+        stage('Build image (Buildah)') {
+            steps {
+                container('buildah') {
+                    sh '''
+                        buildah version | cat
+                        buildah info | cat
+                        # Build image using Buildah (Dockerfile in workspace)
+                        buildah bud --format docker -t ${DOCKER_IMAGE_REMOTE} .
+                    '''
+                }
+            }
+        }
+        stage('Push image') {
+            steps {
+                container('buildah') {
+                    sh 'buildah push ${DOCKER_IMAGE_REMOTE}'
+                }
+            }
+        }
+        stage('Cleanup') {
+            steps {
+                container('buildah') {
+                    sh 'buildah rmi -f ${DOCKER_IMAGE_REMOTE} || true'
+                }
+            }
+        }
+    }
+    post {
+        always {
+            container('buildah') {
+                sh 'buildah logout docker.io || true'
+            }
+        }
+    }
+}

@@ -15,7 +15,7 @@
     "VERSION": "0.0.1"
     },
     "DATABASE_ZUMP": {
-    "HOST": "localhost",
+    "HOST": "postgres",
     "PORT": 5432,
     "READ_PORT": 5432,
     "DB_NAME": "zump",
@@ -24,7 +24,7 @@
     "CLIENT_ENCODING": ""
     },
     "KAFKA": {
-        "BOOTSTRAP_SERVERS": ["localhost:9092"],
+        "BOOTSTRAP_SERVERS": ["kafka:9092"],
         "GROUP_ID": "zump-group",
         "AUTO_OFFSET_RESET": "latest"
     }
