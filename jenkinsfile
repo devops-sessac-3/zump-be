@@ -3,14 +3,19 @@ pipeline {
     triggers {
         githubPush()
     }
+    options {
+        disableConcurrentBuilds()
+        skipDefaultCheckout(true)
+    }
     environment {
         DOCKER_IMAGE_LOCAL = 'zump-api-amd64'
         DOCKER_IMAGE_REMOTE = 'sessaczump/zump-api-amd64:latest'
+        DOCKER_CACHE_IMAGE = 'sessaczump/zump-api-amd64:buildcache'
     }
     stages {
         stage('Checkout') {
             steps {
-                git branch: 'main', credentialsId: 'gittoken', url: 'https://github.com/devops-sessac-3/zump-be.git'
+                checkout scm
             }
         }
         stage('Docker login') {
@@ -27,7 +32,10 @@ pipeline {
             steps {
                 sh 'docker buildx create --use --name builder || docker buildx use builder'
                 sh 'docker buildx inspect --bootstrap | cat'
-                sh 'docker buildx build --platform linux/amd64 -t ${DOCKER_IMAGE_LOCAL} --load .'
+                sh 'docker buildx build --platform linux/amd64 -t ${DOCKER_IMAGE_LOCAL} \
+                    --cache-from type=registry,ref=${DOCKER_CACHE_IMAGE} \
+                    --cache-to type=registry,ref=${DOCKER_CACHE_IMAGE},mode=max \
+                    --load .'
             }
         }
         stage('Tag and Push image') {
@@ -46,6 +54,11 @@ pipeline {
             steps {
                 sh 'docker rmi ${DOCKER_IMAGE_LOCAL} || true'
             }
+        }
+    }
+    post {
+        always {
+            sh 'docker logout || true'
         }
     }
 }
