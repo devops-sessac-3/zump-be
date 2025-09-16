@@ -1,5 +1,17 @@
 pipeline {
-    agent any
+    agent {
+        kubernetes {
+            yaml '''
+            apiVersion: v1
+            kind: Pod
+            spec:
+              containers:
+              - name: shell
+                image: ubuntu
+                command: ['sleep', '3600']
+            '''
+        }
+    }
     triggers {
         githubPush()
     }
@@ -54,11 +66,6 @@ pipeline {
             steps {
                 sh 'docker rmi ${DOCKER_IMAGE_LOCAL} || true'
             }
-        }
-    }
-    post {
-        always {
-            sh 'docker logout || true'
         }
     }
 }
