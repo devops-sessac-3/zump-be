@@ -2,14 +2,55 @@ pipeline {
     agent {
         kubernetes {
             yaml '''
-            apiVersion: v1
-            kind: Pod
-            spec:
-              containers:
-              - name: shell
-                image: ubuntu
-                command: ['sleep', '3600']
-            '''
+apiVersion: v1
+kind: Pod
+metadata:
+  labels:
+    jenkins: "agent"
+spec:
+  restartPolicy: Never
+  nodeSelector:
+    kubernetes.io/os: linux
+  volumes:
+    - name: workspace-volume
+      emptyDir: {}
+    - name: dind-storage
+      emptyDir: {}
+  containers:
+    - name: docker
+      image: docker:24.0.9-cli
+      command: ['cat']
+      tty: true
+      env:
+        - name: DOCKER_HOST
+          value: tcp://localhost:2375
+      volumeMounts:
+        - name: workspace-volume
+          mountPath: /home/jenkins/agent
+    - name: dind
+      image: docker:24.0.9-dind
+      securityContext:
+        privileged: true
+      args:
+        - --host=tcp://0.0.0.0:2375
+        - --storage-driver=overlay2
+      env:
+        - name: DOCKER_TLS_CERTDIR
+          value: ""
+      volumeMounts:
+        - name: dind-storage
+          mountPath: /var/lib/docker
+        - name: workspace-volume
+          mountPath: /home/jenkins/agent
+    - name: jnlp
+      image: jenkins/inbound-agent:3327.v868139a_d00e0-6
+      env:
+        - name: JENKINS_AGENT_WORKDIR
+          value: /home/jenkins/agent
+      volumeMounts:
+        - name: workspace-volume
+          mountPath: /home/jenkins/agent
+'''
         }
     }
     triggers {
@@ -33,38 +74,69 @@ pipeline {
         stage('Docker login') {
             steps {
                 withCredentials([usernamePassword(credentialsId: 'dockerhub', usernameVariable: 'DOCKER_USERNAME', passwordVariable: 'DOCKER_PASSWORD')]) {
-                    sh 'echo $DOCKER_PASSWORD | docker login --username=$DOCKER_USERNAME --password-stdin'
+                    container('docker') {
+                        sh '''
+                            echo "Waiting for Docker daemon..."
+                            for i in $(seq 1 60); do
+                              if docker info >/dev/null 2>&1; then echo "Docker is up"; break; fi
+                              sleep 2
+                            done
+                            docker info >/dev/null 2>&1 || { echo "Docker daemon not ready"; exit 1; }
+                            echo "$DOCKER_PASSWORD" | docker login --username="$DOCKER_USERNAME" --password-stdin
+                        '''
+                    }
                 }
             }
         }
         stage('Build AMD64 image') {
-            when {
-                anyOf { branch 'main'; expression { env.BRANCH_NAME == 'main' || env.GIT_BRANCH == 'refs/heads/main' || env.GIT_BRANCH == 'origin/main' } }
-            }
             steps {
-                sh 'docker buildx create --use --name builder || docker buildx use builder'
-                sh 'docker buildx inspect --bootstrap | cat'
-                sh 'docker buildx build --platform linux/amd64 -t ${DOCKER_IMAGE_LOCAL} \
-                    --cache-from type=registry,ref=${DOCKER_CACHE_IMAGE} \
-                    --cache-to type=registry,ref=${DOCKER_CACHE_IMAGE},mode=max \
-                    --load .'
+                container('docker') {
+                    sh '''
+                        echo "Ensuring Docker daemon is ready..."
+                        for i in $(seq 1 60); do
+                          if docker info >/dev/null 2>&1; then echo "Docker is up"; break; fi
+                          sleep 2
+                        done
+                        docker info >/dev/null 2>&1 || { echo "Docker daemon not ready"; exit 1; }
+
+                        docker version | cat
+                        docker buildx version | cat || true
+                        docker buildx create --name builder --driver docker-container --use || docker buildx use builder
+                        docker buildx inspect --bootstrap | cat
+                        docker buildx build --platform linux/amd64 -t ${DOCKER_IMAGE_LOCAL} \
+                          --cache-from type=registry,ref=${DOCKER_CACHE_IMAGE} \
+                          --cache-to type=registry,ref=${DOCKER_CACHE_IMAGE},mode=max \
+                          --load .
+                    '''
+                }
             }
         }
         stage('Tag and Push image') {
-            when {
-                anyOf { branch 'main'; expression { env.BRANCH_NAME == 'main' || env.GIT_BRANCH == 'refs/heads/main' || env.GIT_BRANCH == 'origin/main' } }
-            }
             steps {
-                sh 'docker tag ${DOCKER_IMAGE_LOCAL} ${DOCKER_IMAGE_REMOTE}'
-                sh 'docker push ${DOCKER_IMAGE_REMOTE}'
+                container('docker') {
+                    sh 'docker tag ${DOCKER_IMAGE_LOCAL} ${DOCKER_IMAGE_REMOTE}'
+                    sh 'docker push ${DOCKER_IMAGE_REMOTE}'
+                }
             }
         }
         stage('Cleanup') {
-            when {
-                anyOf { branch 'main'; expression { env.BRANCH_NAME == 'main' || env.GIT_BRANCH == 'refs/heads/main' || env.GIT_BRANCH == 'origin/main' } }
-            }
             steps {
-                sh 'docker rmi ${DOCKER_IMAGE_LOCAL} || true'
+                container('docker') {
+                    sh 'docker rmi ${DOCKER_IMAGE_LOCAL} || true'
+                }
+            }
+        }
+    }
+    post {
+        always {
+            script {
+                if (env.WORKSPACE) {
+                    container('docker') {
+                        sh 'docker logout || true'
+                    }
+                } else {
+                    echo 'No workspace context; skipping docker logout.'
+                }
             }
         }
     }
