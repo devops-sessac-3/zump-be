@@ -59,20 +59,21 @@ services:
     networks:
       - zump-network
 
-  # FastAPI Application
-  api:
-    build: .
-    container_name: zump-api
-    command: uvicorn main:app --host 0.0.0.0 --port 8000
-    environment:
-      - PYTHONUNBUFFERED=1
-    ports:
-      - "8000:8000"
-    depends_on:
-      - kafka
-      - redis
-    networks:
-      - zump-network
+  # FastAPI Application (별도 실행용으로 주석 처리)
+  # api:
+  #   build: .
+  #   container_name: zump-api
+  #   command: uvicorn main:app --host 0.0.0.0 --port 8000
+  #   environment:
+  #     - PYTHONUNBUFFERED=1
+  #   ports:
+  #     - "8000:8000"
+  #   depends_on:
+  #     - kafka
+  #     - redis
+  #     - postgres
+  #   networks:
+  #     - zump-network
 
   # Concert Queue Worker (Kafka consumer for concert_queue)
   concert-worker:
