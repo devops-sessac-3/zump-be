@@ -2,55 +2,42 @@ pipeline {
     agent {
         kubernetes {
             yaml '''
-apiVersion: v1
-kind: Pod
-metadata:
-  labels:
-    jenkins: "agent"
-spec:
-  restartPolicy: Never
-  nodeSelector:
-    kubernetes.io/os: linux
-  volumes:
-    - name: workspace-volume
-      emptyDir: {}
-    - name: dind-storage
-      emptyDir: {}
-  containers:
-    - name: docker
-      image: docker:24.0.9-cli
-      command: ['cat']
-      tty: true
-      env:
-        - name: DOCKER_HOST
-          value: tcp://localhost:2375
-      volumeMounts:
-        - name: workspace-volume
-          mountPath: /home/jenkins/agent
-    - name: dind
-      image: docker:24.0.9-dind
-      securityContext:
-        privileged: true
-      args:
-        - --host=tcp://0.0.0.0:2375
-        - --storage-driver=overlay2
-      env:
-        - name: DOCKER_TLS_CERTDIR
-          value: ""
-      volumeMounts:
-        - name: dind-storage
-          mountPath: /var/lib/docker
-        - name: workspace-volume
-          mountPath: /home/jenkins/agent
-    - name: jnlp
-      image: jenkins/inbound-agent:3327.v868139a_d00e0-6
-      env:
-        - name: JENKINS_AGENT_WORKDIR
-          value: /home/jenkins/agent
-      volumeMounts:
-        - name: workspace-volume
-          mountPath: /home/jenkins/agent
-'''
+            apiVersion: v1
+            kind: Pod
+            metadata:
+            labels:
+                jenkins: "agent"
+            spec:
+            restartPolicy: Never
+            nodeSelector:
+                kubernetes.io/os: linux
+            securityContext:
+                runAsUser: 0
+            volumes:
+                - name: workspace-volume
+                emptyDir: {}
+            containers:
+                - name: buildah
+                image: quay.io/buildah/stable:v1.34.0
+                securityContext:
+                    privileged: true
+                env:
+                    - name: STORAGE_DRIVER
+                    value: vfs
+                command: ['cat']
+                tty: true
+                volumeMounts:
+                    - name: workspace-volume
+                    mountPath: /home/jenkins/agent
+                - name: jnlp
+                image: jenkins/inbound-agent:3327.v868139a_d00e0-6
+                env:
+                    - name: JENKINS_AGENT_WORKDIR
+                    value: /home/jenkins/agent
+                volumeMounts:
+                    - name: workspace-volume
+                    mountPath: /home/jenkins/agent
+            '''
         }
     }
     triggers {
@@ -61,9 +48,7 @@ spec:
         skipDefaultCheckout(true)
     }
     environment {
-        DOCKER_IMAGE_LOCAL = 'zump-api-amd64'
         DOCKER_IMAGE_REMOTE = 'sessaczump/zump-api-amd64:latest'
-        DOCKER_CACHE_IMAGE = 'sessaczump/zump-api-amd64:buildcache'
     }
     stages {
         stage('Checkout') {
@@ -71,72 +56,48 @@ spec:
                 checkout scm
             }
         }
-        stage('Docker login') {
+        stage('Registry login') {
             steps {
-                withCredentials([usernamePassword(credentialsId: 'dockerhub', usernameVariable: 'DOCKER_USERNAME', passwordVariable: 'DOCKER_PASSWORD')]) {
-                    container('docker') {
+                withCredentials([usernamePassword(credentialsId: 'dockerhub', usernameVariable: 'REG_USERNAME', passwordVariable: 'REG_PASSWORD')]) {
+                    container('buildah') {
                         sh '''
-                            echo "Waiting for Docker daemon..."
-                            for i in $(seq 1 60); do
-                              if docker info >/dev/null 2>&1; then echo "Docker is up"; break; fi
-                              sleep 2
-                            done
-                            docker info >/dev/null 2>&1 || { echo "Docker daemon not ready"; exit 1; }
-                            echo "$DOCKER_PASSWORD" | docker login --username="$DOCKER_USERNAME" --password-stdin
+                            echo "$REG_PASSWORD" | buildah login --username "$REG_USERNAME" --password-stdin docker.io
                         '''
                     }
                 }
             }
         }
-        stage('Build AMD64 image') {
+        stage('Build image (Buildah)') {
             steps {
-                container('docker') {
+                container('buildah') {
                     sh '''
-                        echo "Ensuring Docker daemon is ready..."
-                        for i in $(seq 1 60); do
-                          if docker info >/dev/null 2>&1; then echo "Docker is up"; break; fi
-                          sleep 2
-                        done
-                        docker info >/dev/null 2>&1 || { echo "Docker daemon not ready"; exit 1; }
-
-                        docker version | cat
-                        docker buildx version | cat || true
-                        docker buildx create --name builder --driver docker-container --use || docker buildx use builder
-                        docker buildx inspect --bootstrap | cat
-                        docker buildx build --platform linux/amd64 -t ${DOCKER_IMAGE_LOCAL} \
-                          --cache-from type=registry,ref=${DOCKER_CACHE_IMAGE} \
-                          --cache-to type=registry,ref=${DOCKER_CACHE_IMAGE},mode=max \
-                          --load .
+                        buildah version | cat
+                        buildah info | cat
+                        # Build image using Buildah (Dockerfile in workspace)
+                        buildah bud --format docker -t ${DOCKER_IMAGE_REMOTE} .
                     '''
                 }
             }
         }
-        stage('Tag and Push image') {
+        stage('Push image') {
             steps {
-                container('docker') {
-                    sh 'docker tag ${DOCKER_IMAGE_LOCAL} ${DOCKER_IMAGE_REMOTE}'
-                    sh 'docker push ${DOCKER_IMAGE_REMOTE}'
+                container('buildah') {
+                    sh 'buildah push ${DOCKER_IMAGE_REMOTE}'
                 }
             }
         }
         stage('Cleanup') {
             steps {
-                container('docker') {
-                    sh 'docker rmi ${DOCKER_IMAGE_LOCAL} || true'
+                container('buildah') {
+                    sh 'buildah rmi -f ${DOCKER_IMAGE_REMOTE} || true'
                 }
             }
         }
     }
     post {
         always {
-            script {
-                if (env.WORKSPACE) {
-                    container('docker') {
-                        sh 'docker logout || true'
-                    }
-                } else {
-                    echo 'No workspace context; skipping docker logout.'
-                }
+            container('buildah') {
+                sh 'buildah logout docker.io || true'
             }
         }
     }
