@@ -47,19 +47,47 @@ app.include_router(enqueue_router.router)  # 작업 큐 라우터
 # 애플리케이션 라이프사이클 훅
 @app.on_event("startup")
 async def on_startup():
-    # Kafka Producer 초기화 (소비는 필요시 개별 서비스에서 시작)
-    await event_manager.initialize()
-    # 대기열 스케줄러 시작
-    await default_scheduler.start()
-    # 순번 갱신 구독자 시작 (Redis Pub/Sub -> SSE 브로드캐스트)
-    await rank_subscriber.start()
+    try:
+        # Kafka Producer 초기화 (소비는 필요시 개별 서비스에서 시작)
+        await event_manager.initialize()
+        print("✅ Kafka EventManager 초기화 성공")
+    except Exception as e:
+        print(f"⚠️  Kafka EventManager 초기화 실패 (계속 진행): {e}")
+    
+    try:
+        # 대기열 스케줄러 시작
+        await default_scheduler.start()
+        print("✅ 대기열 스케줄러 시작 성공")
+    except Exception as e:
+        print(f"⚠️  대기열 스케줄러 시작 실패 (계속 진행): {e}")
+    
+    try:
+        # 순번 갱신 구독자 시작 (Redis Pub/Sub -> SSE 브로드캐스트)
+        await rank_subscriber.start()
+        print("✅ 순번 갱신 구독자 시작 성공")
+    except Exception as e:
+        print(f"⚠️  순번 갱신 구독자 시작 실패 (계속 진행): {e}")
 
 
 @app.on_event("shutdown")
 async def on_shutdown():
-    await default_scheduler.stop()
-    await rank_subscriber.stop()
-    await event_manager.shutdown()
+    try:
+        await default_scheduler.stop()
+        print("✅ 대기열 스케줄러 정지 성공")
+    except Exception as e:
+        print(f"⚠️  대기열 스케줄러 정지 실패: {e}")
+    
+    try:
+        await rank_subscriber.stop()
+        print("✅ 순번 갱신 구독자 정지 성공")
+    except Exception as e:
+        print(f"⚠️  순번 갱신 구독자 정지 실패: {e}")
+    
+    try:
+        await event_manager.shutdown()
+        print("✅ Kafka EventManager 정지 성공")
+    except Exception as e:
+        print(f"⚠️  Kafka EventManager 정지 실패: {e}")
 
 # 글로벌 예외 처리
 @app.exception_handler(RequestValidationError)
