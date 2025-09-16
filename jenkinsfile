@@ -3,42 +3,42 @@ pipeline {
     agent {
         kubernetes {
             yaml '''
-            apiVersion: v1
-            kind: Pod
-            metadata:
-            labels:
-                jenkins: "agent"
-            spec:
-            restartPolicy: Never
-            nodeSelector:
-                kubernetes.io/os: linux
-            securityContext:
-                runAsUser: 0
-            volumes:
-                - name: workspace-volume
-                emptyDir: {}
-            containers:
-                - name: buildah
-                image: quay.io/buildah/stable:v1.34.0
-                securityContext:
-                    privileged: true
-                env:
-                    - name: STORAGE_DRIVER
-                    value: vfs
-                command: ['cat']
-                tty: true
-                volumeMounts:
-                    - name: workspace-volume
-                    mountPath: /home/jenkins/agent
-                - name: jnlp
-                image: jenkins/inbound-agent:3327.v868139a_d00e0-6
-                env:
-                    - name: JENKINS_AGENT_WORKDIR
-                    value: /home/jenkins/agent
-                volumeMounts:
-                    - name: workspace-volume
-                    mountPath: /home/jenkins/agent
-            '''
+apiVersion: v1
+kind: Pod
+metadata:
+  labels:
+    jenkins: "agent"
+spec:
+  restartPolicy: Never
+  nodeSelector:
+    kubernetes.io/os: linux
+  securityContext:
+    runAsUser: 0
+  volumes:
+    - name: workspace-volume
+      emptyDir: {}
+  containers:
+    - name: buildah
+      image: quay.io/buildah/stable:v1.34.0
+      securityContext:
+        privileged: true
+      env:
+        - name: STORAGE_DRIVER
+          value: vfs
+      command: ['cat']
+      tty: true
+      volumeMounts:
+        - name: workspace-volume
+          mountPath: /home/jenkins/agent
+    - name: jnlp
+      image: jenkins/inbound-agent:3327.v868139a_d00e0-6
+      env:
+        - name: JENKINS_AGENT_WORKDIR
+          value: /home/jenkins/agent
+      volumeMounts:
+        - name: workspace-volume
+          mountPath: /home/jenkins/agent
+'''
         }
     }
     triggers {
