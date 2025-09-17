@@ -85,7 +85,7 @@ spec:
                         
                         # 코드 문법 검사
                         python -m py_compile main.py
-                        find . -name "*.py" -exec python -m py_compile {} \;
+                        find . -name "*.py" -print0 | xargs -0 python -m py_compile
                         
                         echo "코드 문법 검사 통과"
                     '''
@@ -112,7 +112,7 @@ spec:
                         
                         # 테스트 통과 후 Docker 이미지 빌드
                         echo "Docker 이미지 빌드를 시작합니다..."
-                        buildah bud --format docker -t ${DOCKER_IMAGE_REMOTE} .
+                        buildah bud --format docker -f Dockerfile -t ${DOCKER_IMAGE_REMOTE} .
                         
                         # 빌드된 이미지 정보 출력
                         echo "빌드된 이미지 정보:"
@@ -141,7 +141,6 @@ spec:
     post {
         success { echo '빌드가 성공적으로 완료되었습니다!'}
         failure { echo '빌드가 실패했습니다. 로그를 확인해주세요.'}
-        }
         always {
             container('buildah') {
                 sh '''
