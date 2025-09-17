@@ -22,10 +22,5 @@
     "USERNAME": "postgres",
     "PASSWORD": "pass",
     "CLIENT_ENCODING": ""
-    },
-    "KAFKA": {
-        "BOOTSTRAP_SERVERS": ["kafka:9092"],
-        "GROUP_ID": "zump-group",
-        "AUTO_OFFSET_RESET": "latest"
     }
 }
