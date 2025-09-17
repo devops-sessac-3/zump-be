@@ -57,6 +57,41 @@ spec:
                 checkout scm
             }
         }
+        stage('Test Dependencies') {
+            steps {
+                container('buildah') {
+                    sh '''
+                        # Python 환경 설정
+                        python3 -m venv /tmp/venv
+                        source /tmp/venv/bin/activate
+                        
+                        # 의존성 설치
+                        pip install --upgrade pip
+                        pip install -r requirements.txt
+                        
+                        # 빌드 검증 테스트 실행
+                        python -m pytest tests/test_build_validation.py -v --tb=short
+                        
+                        echo "빌드 검증 테스트 통과"
+                    '''
+                }
+            }
+        }
+        stage('Code Quality Check') {
+            steps {
+                container('buildah') {
+                    sh '''
+                        source /tmp/venv/bin/activate
+                        
+                        # 코드 문법 검사
+                        python -m py_compile main.py
+                        find . -name "*.py" -exec python -m py_compile {} \;
+                        
+                        echo "코드 문법 검사 통과"
+                    '''
+                }
+            }
+        }
         stage('Registry login') {
             steps {
                 withCredentials([usernamePassword(credentialsId: 'dockerhub', usernameVariable: 'REG_USERNAME', passwordVariable: 'REG_PASSWORD')]) {
@@ -74,8 +109,16 @@ spec:
                     sh '''
                         buildah version | cat
                         buildah info | cat
-                        # Build image using Buildah (Dockerfile in workspace)
+                        
+                        # 테스트 통과 후 Docker 이미지 빌드
+                        echo "Docker 이미지 빌드를 시작합니다..."
                         buildah bud --format docker -t ${DOCKER_IMAGE_REMOTE} .
+                        
+                        # 빌드된 이미지 정보 출력
+                        echo "빌드된 이미지 정보:"
+                        buildah images ${DOCKER_IMAGE_REMOTE}
+                        
+                        echo "Docker 이미지 빌드 완료"
                     '''
                 }
             }
@@ -96,9 +139,16 @@ spec:
         }
     }
     post {
+        success { echo '빌드가 성공적으로 완료되었습니다!'}
+        failure { echo '빌드가 실패했습니다. 로그를 확인해주세요.'}
+        }
         always {
             container('buildah') {
-                sh 'buildah logout docker.io || true'
+                sh '''
+                    # 정리 작업
+                    buildah logout docker.io || true
+                    rm -rf /tmp/venv || true
+                '''
             }
         }
     }
