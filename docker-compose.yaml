@@ -45,13 +45,15 @@ services:
     depends_on:
       - zookeeper
     ports:
-      - "9092:9092"
+      - "9092:9092"   # 내부용(INTERNAL)
+      - "19092:19092" # 외부용(EXTERNAL)
     environment:
       KAFKA_BROKER_ID: 1
       KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
-      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092
-      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://localhost:9092
-      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_LISTENERS: INTERNAL://0.0.0.0:9092,EXTERNAL://0.0.0.0:19092
+      KAFKA_ADVERTISED_LISTENERS: INTERNAL://kafka:9092,EXTERNAL://localhost:19092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: INTERNAL:PLAINTEXT,EXTERNAL:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
       KAFKA_AUTO_CREATE_TOPICS_ENABLE: 'true'
     volumes:
@@ -59,13 +61,16 @@ services:
     networks:
       - zump-network
 
-  # FastAPI Application (별도 실행용으로 주석 처리)
+  # FastAPI Application
   # api:
   #   build: .
   #   container_name: zump-api
   #   command: uvicorn main:app --host 0.0.0.0 --port 8000
   #   environment:
   #     - PYTHONUNBUFFERED=1
+  #     - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
+  #     - REDIS_HOST=redis
+  #     - DATABASE_HOST=postgres
   #   ports:
   #     - "8000:8000"
   #   depends_on:
@@ -75,37 +80,9 @@ services:
   #   networks:
   #     - zump-network
 
-  # Concert Queue Worker (Kafka consumer for concert_queue)
-  concert-worker:
-    build: .
-    container_name: zump-concert-worker
-    command: python -m workers.concert_queue_worker
-    environment:
-      - PYTHONUNBUFFERED=1
-      - CONCERT_WORKER_CONCURRENCY=16
-      - CONCERT_DELAY_MS=0
-    depends_on:
-      - kafka
-      - redis
-    restart: always
-    networks:
-      - zump-network
+  # Concert Queue Worker removed; use embedded consumer in API process
 
-  # Generic Task Worker (Kafka consumer for task_topic)
-  task-worker:
-    build: .
-    container_name: zump-task-worker
-    command: python workers/worker.py
-    environment:
-      - PYTHONUNBUFFERED=1
-      - WORKER_CONCURRENCY=32
-      - TASK_PROCESSING_MS=0
-    depends_on:
-      - kafka
-      - redis
-    restart: always
-    networks:
-      - zump-network
+  # Generic Task Worker 제거됨 (현재 리포지토리에 해당 워커 없음)
 
   # Kafka UI (Optional - for monitoring)
   # kafka-ui:

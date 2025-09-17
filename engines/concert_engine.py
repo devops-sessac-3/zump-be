@@ -1,12 +1,7 @@
-from fastapi import status, Response, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from schemas import concert_schema as schema
 from queries import concert_query as query
 from utils.database import execute_query_async
-from utils.database import execute_post_async
-# from utils.database import execute_post_multi_async
-from utils import messsage
-from utils import json_util
 
 
 async def get_concerts(db: AsyncSession):

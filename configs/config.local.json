@@ -1,0 +1,24 @@
+{
+    "KAFKA": {
+        "BOOTSTRAP_SERVERS": "localhost:19092"
+    },
+    "REDIS": {
+        "HOST": "localhost",
+        "PORT": 6379,
+        "DB": 0
+    },
+    "DATABASE_ZUMP": {
+        "HOST": "localhost",
+        "PORT": 5432
+    },
+    "QUEUE": { 
+        "DEQUEUE_PER_SEC": 10,
+        "GATE_MODE": "auto", 
+        "ADMIT_WINDOW": 1,   
+        "AUTO_QUEUE_SIZE_THRESHOLD": 101,
+        "AUTO_ENQUEUE_RATE_PER_SEC": 20,
+        "AUTO_TOGGLE_COOLDOWN_MS": 5000,
+        "BLOCKING_DETAIL_WAIT_MS": 0
+    }
+}
+
