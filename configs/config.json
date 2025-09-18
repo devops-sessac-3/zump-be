@@ -2,13 +2,9 @@
     "OAUTH": {
         "JWT_SECRET_KEY": "dz7s088UQix+Rmt/prE7OGgXZWuZBjdefGEdSIeX5XVIzOQPbVoiNsQ8oDSLqlC+",
         "ALGORITHM": "HS256",
-        "DEFAULT_JWT_EXPIRE_TIME": 60,
-        "CERT_AES_SECRET_KEY": "RsoyK3hkkIuPPutl08q86INoAjgajAsq",
-        "NETWORK_AES_SECRET_KEY": "OzPyHhV0skkoZodOWk5XoNn5xMEsAALJ",
-        "DATABASE_AES_SECRET_KEY": "k5GBzqNUYjLiam1ExChnmbIBoJ4tQztj",
-        "DATABASE_AES_IV": "CvC+PE3WEFlrA1Q5V/6e8W=="
+        "DEFAULT_JWT_EXPIRE_TIME": 60
     },
-    "DEBUG_MODE": true,
+    "DEBUG_MODE": false,
     "API_SETTING": {
     "TITLE": "ZUMP API",
     "DESCRIPTION": "ZUMP REST API",

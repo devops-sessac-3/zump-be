@@ -8,7 +8,7 @@ import requests
 import redis
 
 
-API_BASE = os.getenv("SERVER", "http://localhost:8000")
+API_BASE = os.getenv("SERVER", "http://localhost:8080")
 CONCERT_SE = os.getenv("CONCERT_SE", "1")
 ME_USER_SE = int(os.getenv("USER_A", "300"))
 TOTAL_USERS = int(os.getenv("USERS", "300"))

@@ -152,7 +152,7 @@ class TestDockerBuildValidation:
             content = f.read()
         
         assert "EXPOSE" in content, "Dockerfile에서 포트를 노출하지 않습니다"
-        assert "8000" in content, "Dockerfile에서 8000 포트를 노출하지 않습니다"
+        assert "8080" in content, "Dockerfile에서 8080 포트를 노출하지 않습니다"
     
     def test_requirements_installable(self):
         """requirements.txt의 패키지들이 설치 가능한지 테스트"""
