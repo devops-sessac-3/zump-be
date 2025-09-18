@@ -6,9 +6,18 @@
 ## 프로젝트 
 공연 예매 서비스의 api를 담당하는 서버입니다. 
 
+## 파이썬 설치
+```sh
+# MAC
+brew install python@3.11
+
+# WINDOWS
+winget install --id Python.Python.3.11 -e
+```
+
 ## 가상환경 접속
 ```sh
-python -m venv .venv
+python3.11 -m venv .venv
 source .venv/bin/activate
 ```
 
@@ -17,7 +26,16 @@ source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-## fastapi 실행
+## 서버 배포 fastapi 실행
 ```sh
-uvicorn main:app --host 0.0.0.0 --port 8000  
+# 서버 배포 시
+uvicorn main:app --host 0.0.0.0 --port 8080  
+```
+
+## 로컬 테스트 환경에서 실행
+```sh
+# kafka, zookeeper redis, postgres 컨테이너 실행
+docker-compose up -d
+
+APP_ENV=local uvicorn main:app --host 0.0.0.0 --port 8080
 ```

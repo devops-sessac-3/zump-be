@@ -61,28 +61,6 @@ services:
     networks:
       - zump-network
 
-  # FastAPI Application
-  # api:
-  #   build: .
-  #   container_name: zump-api
-  #   command: uvicorn main:app --host 0.0.0.0 --port 8000
-  #   environment:
-  #     - PYTHONUNBUFFERED=1
-  #     - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
-  #     - REDIS_HOST=redis
-  #     - DATABASE_HOST=postgres
-  #   ports:
-  #     - "8000:8000"
-  #   depends_on:
-  #     - kafka
-  #     - redis
-  #     - postgres
-  #   networks:
-  #     - zump-network
-
-  # Concert Queue Worker removed; use embedded consumer in API process
-
-  # Generic Task Worker 제거됨 (현재 리포지토리에 해당 워커 없음)
 
   # Kafka UI (Optional - for monitoring)
   # kafka-ui:
@@ -95,19 +73,6 @@ services:
   #   environment:
   #     KAFKA_CLUSTERS_0_NAME: local
   #     KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:9092
-  #   networks:
-  #     - zump-network
-
-  # Redis Commander (Optional - for Redis monitoring)
-  # redis-commander:
-  #   image: rediscommander/redis-commander:latest
-  #   container_name: zump-redis-commander
-  #   depends_on:
-  #     - redis
-  #   ports:
-  #     - "8081:8081"
-  #   environment:
-  #     REDIS_HOSTS: local:redis:6379
   #   networks:
   #     - zump-network
 

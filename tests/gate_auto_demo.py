@@ -8,7 +8,7 @@
 4) 선두가 되면 상세조회 재호출 → 200 기대
 
 환경변수:
-- SERVER: API 주소 (기본 http://localhost:8000)
+- SERVER: API 주소 (기본 http://localhost:8080)
 - CONCERT_SE: 테스트 콘서트 ID (기본 1)
 - USERS: 초기 투입 인원(기본 100)
 - USER_A: 모니터링할 사용자(기본 105)
@@ -24,9 +24,9 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 import requests
 
 
-SERVER = os.getenv("SERVER", "http://localhost:8000")
+SERVER = os.getenv("SERVER", "http://localhost:8080")
 CONCERT_SE = os.getenv("CONCERT_SE", "1")
-USERS = int(os.getenv("USERS", "110"))
+USERS = int(os.getenv("USERS", "100"))
 USER_A = int(os.getenv("USER_A", "105"))
 CONCURRENCY = int(os.getenv("CONCURRENCY", "50"))
 

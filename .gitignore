@@ -184,3 +184,4 @@ __pycache__/
 .venv/
 .vscode/
 config/
+pytest.ini
