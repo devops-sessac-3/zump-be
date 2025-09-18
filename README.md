@@ -1,4 +1,7 @@
-# sesacapi server
+# Zump API Server
+
+## 프로젝트 개요
+공연 예매 서비스의 API를 담당하는 FastAPI 서버입니다.
 
 ## 프로젝트 
 공연 예매 서비스의 api를 담당하는 서버입니다. 
