@@ -12,6 +12,15 @@ brew install python@3.11
 winget install --id Python.Python.3.11 -e
 ```
 
+## 파이썬 설치
+```sh
+# MAC
+brew install python@3.11
+
+# WINDOWS
+winget install --id Python.Python.3.11 -e
+```
+
 ## 가상환경 접속
 ```sh
 python3.11 -m venv .venv
