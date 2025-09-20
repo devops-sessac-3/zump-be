@@ -50,8 +50,8 @@ class Config():
                     config_data["PORT"] = int(os.getenv("REDIS_PORT"))
                 if os.getenv("REDIS_DB"):
                     config_data["DB"] = int(os.getenv("REDIS_DB"))
-                if os.getenv("REDIS__PASSWORD"):
-                    config_data["PASSWORD"] = os.getenv("REDIS__PASSWORD")
+                if os.getenv("REDIS_PASSWORD"):
+                    config_data["PASSWORD"] = os.getenv("REDIS_PASSWORD")
             if config_name == "KAFKA":
                 if os.getenv("KAFKA_BOOTSTRAP_SERVERS"):
                     config_data["BOOTSTRAP_SERVERS"] = os.getenv("KAFKA_BOOTSTRAP_SERVERS")
