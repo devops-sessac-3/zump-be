@@ -23,6 +23,7 @@ class AsyncRedisClient:
             host=redis_cfg["HOST"],
             port=redis_cfg["PORT"],
             db=redis_cfg.get("DB", 0),
+            password=redis_cfg.get("PASSWORD"),
             encoding="utf-8",
             decode_responses=True,
         )
