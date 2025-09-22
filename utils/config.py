@@ -37,21 +37,42 @@ class Config():
 
     def get_config(self, config_name):
         try:
-            config_data = self.config[config_name]
+            # 변이 방지: 내부 원본을 보호
+            config_data = copy.deepcopy(self.config[config_name])
             
             # 환경 변수로 오버라이드
             if config_name == "DATABASE_ZUMP":
+                # 기존 + 추가 오버라이드들
                 if os.getenv("DATABASE_HOST"):
                     config_data["HOST"] = os.getenv("DATABASE_HOST")
+                port = self._get_int("DATABASE_PORT")
+                if port is not None:
+                    config_data["PORT"] = port
+                rport = self._get_int("DATABASE_READ_PORT")
+                if rport is not None:
+                    config_data["READ_PORT"] = rport
+                if os.getenv("DATABASE_DB_NAME"):
+                    config_data["DB_NAME"] = os.getenv("DATABASE_DB_NAME")
+                if os.getenv("DATABASE_USERNAME"):
+                    config_data["USERNAME"] = os.getenv("DATABASE_USERNAME")
+                if os.getenv("DATABASE_PASSWORD"):
+                    config_data["PASSWORD"] = os.getenv("DATABASE_PASSWORD")
+                if os.getenv("DATABASE_CLIENT_ENCODING") is not None:
+                    config_data["CLIENT_ENCODING"] = os.getenv("DATABASE_CLIENT_ENCODING")
+
             if config_name == "REDIS":
-                if os.getenv("REDIS__HOST"):
-                    config_data["HOST"] = os.getenv("REDIS__HOST")
-                if os.getenv("REDIS__PORT"):
-                    config_data["PORT"] = int(os.getenv("REDIS__PORT"))
-                if os.getenv("REDIS__DB"):
-                    config_data["DB"] = int(os.getenv("REDIS__DB"))
-                if os.getenv("REDIS__PASSWORD"):
-                    config_data["PASSWORD"] = os.getenv("REDIS__PASSWORD")
+                # 언더스코어 타이포 수정: REDIS__* -> REDIS_*
+                if os.getenv("REDIS_HOST"):
+                    config_data["HOST"] = os.getenv("REDIS_HOST")
+                port = self._get_int("REDIS_PORT")
+                if port is not None:
+                    config_data["PORT"] = port
+                db = self._get_int("REDIS_DB")
+                if db is not None:
+                    config_data["DB"] = db
+                if os.getenv("REDIS_PASSWORD"):
+                    config_data["PASSWORD"] = os.getenv("REDIS_PASSWORD")
+
             if config_name == "KAFKA":
                 if os.getenv("KAFKA_BOOTSTRAP_SERVERS"):
                     config_data["BOOTSTRAP_SERVERS"] = os.getenv("KAFKA_BOOTSTRAP_SERVERS")
@@ -59,7 +80,6 @@ class Config():
                     config_data["QUEUE_TOPIC"] = os.getenv("KAFKA_QUEUE_TOPIC")
                 if os.getenv("KAFKA_CLIENT_ID"):
                     config_data["CLIENT_ID"] = os.getenv("KAFKA_CLIENT_ID")
-                    
             return config_data
         except KeyError:
             return None
