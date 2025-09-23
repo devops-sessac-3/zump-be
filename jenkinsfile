@@ -1,4 +1,8 @@
-// Jenkinsfile (Buildah + Python, semver(+sha)+latest 태그 푸시)
+// Jenkinsfile — Buildah + Python
+// - 태그 정책: 순수 semver(X.Y.Z) + latest
+// - 옵션: PUSH_IMMUTABLE=true 로 두면 X.Y.Z-<sha>도 함께 푸시
+// - Argo CD Image Updater는 allow-tags=regexp:^\\d+\\.\\d+\\.\\d+$ 와 찰떡궁합
+
 pipeline {
   agent {
     kubernetes {
@@ -25,11 +29,14 @@ spec:
       env:
         - name: STORAGE_DRIVER
           value: vfs
+        - name: BUILDAH_ISOLATION
+          value: chroot
       command: ['cat']
       tty: true
       volumeMounts:
         - name: workspace-volume
           mountPath: /home/jenkins/agent
+
     - name: python
       image: python:3.11-slim
       command: ['cat']
@@ -37,6 +44,15 @@ spec:
       volumeMounts:
         - name: workspace-volume
           mountPath: /home/jenkins/agent
+
+    - name: git
+      image: alpine/git:2.45.2
+      command: ['cat']
+      tty: true
+      volumeMounts:
+        - name: workspace-volume
+          mountPath: /home/jenkins/agent
+
     - name: jnlp
       image: jenkins/inbound-agent:3327.v868139a_d00e0-6
       env:
@@ -48,63 +64,81 @@ spec:
 '''
     }
   }
+
   triggers { githubPush() }
+
   options {
     disableConcurrentBuilds()
     skipDefaultCheckout(true)
+    timestamps()
   }
+
   environment {
-    IMAGE_BASE = 'docker.io/sessaczump/zump-api-amd64'
-    REGISTRY   = 'docker.io'
+    IMAGE_BASE     = 'docker.io/sessaczump/zump-api-amd64'
+    REGISTRY       = 'docker.io'
+    // 불변 태그(X.Y.Z-<sha>)도 푸시하려면 true
+    PUSH_IMMUTABLE = 'false'
   }
 
   stages {
     stage('Checkout') {
-      steps { checkout scm }
-    }
-
-    stage('Resolve Version') {
       steps {
-        script {
-          // 최신 git 태그(semver)를 버전으로, 없으면 1.0.0
-          def ver = sh(script: "git describe --tags --abbrev=0 2>/dev/null || echo 1.0.0", returnStdout: true).trim()
-          def sha = sh(script: "git rev-parse --short HEAD", returnStdout: true).trim()
-          env.VERSION  = ver
-          env.GIT_SHA  = sha
-          env.IMAGE_LATEST   = "${env.IMAGE_BASE}:latest"
-          env.IMAGE_VERSION  = "${env.IMAGE_BASE}:${env.VERSION}"
-          env.IMAGE_IMMUTABLE= "${env.IMAGE_BASE}:${env.VERSION}-${env.GIT_SHA}"  // '+' 금지 → '-' 사용
-          echo "Version: ${env.VERSION}, SHA: ${env.GIT_SHA}"
-        }
-      }
-    }
-
-    stage('Test Dependencies') {
-      steps {
-        container('python') {
+        // Jenkins SCM 플러그인으로 체크아웃 (태그 정보 포함)
+        checkout(scm)
+        // 필요 시 origin 태그 최신화
+        container('git') {
           sh '''
-            python -V
-            python -m venv .venv
-            . .venv/bin/activate
-            pip install --upgrade pip
-            if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
-            # 빌드 검증 테스트
-            if [ -f tests/test_build_validation.py ]; then python -m pytest tests/test_build_validation.py -v --tb=short; fi
-            echo "빌드 검증 테스트 통과"
+            set -euxo pipefail
+            git fetch --tags --force || true
           '''
         }
       }
     }
 
-    stage('Code Quality Check') {
+    stage('Resolve Version (semver only)') {
+      steps {
+        container('git') {
+          script {
+            // 숫자.숫자.숫자 형태의 최신 태그만 선택, 없으면 1.0.0
+            def ver = sh(
+              script: "git describe --tags --match '[0-9]*.[0-9]*.[0-9]*' --abbrev=0 2>/dev/null || echo 1.0.0",
+              returnStdout: true
+            ).trim()
+            // 혹시 v접두 태그를 쓴다면 제거 (여기선 순수 semver만 허용)
+            ver = ver.replaceFirst('^v','')
+
+            def sha = sh(script: "git rev-parse --short HEAD", returnStdout: true).trim()
+
+            env.VERSION        = ver                      // e.g., 1.0.1
+            env.GIT_SHA        = sha                      // e.g., ac83cc4
+            env.IMAGE_VERSION  = "${env.IMAGE_BASE}:${env.VERSION}"
+            env.IMAGE_LATEST   = "${env.IMAGE_BASE}:latest"
+            env.IMAGE_IMMUTABLE= "${env.IMAGE_BASE}:${env.VERSION}-${env.GIT_SHA}" // 옵션
+
+            echo "✔ Resolved Version: ${env.VERSION}, SHA: ${env.GIT_SHA}"
+          }
+        }
+      }
+    }
+
+    stage('Python: deps & quick checks') {
       steps {
         container('python') {
           sh '''
-            . .venv/bin/activate || true
-            # 파이썬 문법 검사
+            set -euxo pipefail
+            python -V
+            python -m venv .venv
+            . .venv/bin/activate
+            pip install --upgrade pip
+            if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+
+            # 간단 문법/구조 검사
             if [ -f main.py ]; then python -m py_compile main.py; fi
             find . -name "*.py" -print0 | xargs -0 -I{} python -m py_compile "{}" || true
-            echo "코드 문법 검사 통과"
+
+            # 선택적 빌드 검증 테스트
+            if [ -f tests/test_build_validation.py ]; then python -m pytest tests/test_build_validation.py -v --tb=short; fi
+            echo "✔ Python checks passed"
           '''
         }
       }
@@ -115,6 +149,7 @@ spec:
         withCredentials([usernamePassword(credentialsId: 'dockerhub', usernameVariable: 'REG_USERNAME', passwordVariable: 'REG_PASSWORD')]) {
           container('buildah') {
             sh '''
+              set -euxo pipefail
               echo "$REG_PASSWORD" | buildah login --username "$REG_USERNAME" --password-stdin docker.io
             '''
           }
@@ -126,16 +161,24 @@ spec:
       steps {
         container('buildah') {
           sh '''
+            set -euxo pipefail
             buildah version || true
             buildah info || true
-            echo "이미지 빌드 시작..."
-            # 기본 이미지: docker 포맷 (Docker Hub 호환)
-            buildah bud --format docker -f Dockerfile -t "${IMAGE_IMMUTABLE}" .
-            # 추가 태그 부여
-            buildah tag "${IMAGE_IMMUTABLE}" "${IMAGE_VERSION}"
-            buildah tag "${IMAGE_IMMUTABLE}" "${IMAGE_LATEST}"
-            echo "빌드된 이미지:"
-            buildah images | grep -E "${IMAGE_BASE}"
+
+            echo "🔨 Build ${IMAGE_VERSION}"
+            # docker 포맷으로 빌드(Docker Hub 호환)
+            buildah bud --format docker -f Dockerfile -t "${IMAGE_VERSION}" .
+
+            # latest 태그 추가
+            buildah tag "${IMAGE_VERSION}" "${IMAGE_LATEST}"
+
+            # (옵션) 불변 태그도 로컬에 추가만 해둠
+            if [ "${PUSH_IMMUTABLE}" = "true" ]; then
+              buildah tag "${IMAGE_VERSION}" "${IMAGE_IMMUTABLE}"
+            fi
+
+            echo "✔ Built images:"
+            buildah images | grep -E "${IMAGE_BASE}" || true
           '''
         }
       }
@@ -145,11 +188,18 @@ spec:
       steps {
         container('buildah') {
           sh '''
-            set -e
-            for TAG in "${IMAGE_IMMUTABLE}" "${IMAGE_VERSION}" "${IMAGE_LATEST}"; do
-              echo "Pushing $TAG"
+            set -euxo pipefail
+            # 순수 semver + latest 푸시
+            for TAG in "${IMAGE_VERSION}" "${IMAGE_LATEST}"; do
+              echo "📤 Pushing $TAG"
               buildah push "$TAG"
             done
+
+            # (옵션) 불변 태그도 푸시
+            if [ "${PUSH_IMMUTABLE}" = "true" ]; then
+              echo "📤 Pushing ${IMAGE_IMMUTABLE}"
+              buildah push "${IMAGE_IMMUTABLE}"
+            fi
           '''
         }
       }
@@ -157,14 +207,19 @@ spec:
   }
 
   post {
-    success { echo '✅ 빌드/푸시 성공 — AIU가 최신 semver 태그를 감지해 kustomization.yaml을 갱신할 거예요.' }
-    failure { echo '❌ 빌드 실패 — 로그를 확인하세요.' }
+    success {
+      echo '✅ 빌드/푸시 성공 — Argo CD Image Updater가 `^\d+\.\d+\.\d+$`에 맞는 최신 태그를 감지합니다.'
+    }
+    failure {
+      echo '❌ 빌드 실패 — 콘솔 로그를 확인하세요.'
+    }
     always {
       container('buildah') {
         sh '''
+          set +e
           buildah logout ${REGISTRY} || true
-          # 로컬 이미지 정리(옵션)
-          buildah rmi -f "${IMAGE_IMMUTABLE}" "${IMAGE_VERSION}" "${IMAGE_LATEST}" 2>/dev/null || true
+          # 로컬 이미지 정리(선택)
+          buildah rmi -f "${IMAGE_VERSION}" "${IMAGE_LATEST}" "${IMAGE_IMMUTABLE}" 2>/dev/null || true
         '''
       }
       container('python') {
