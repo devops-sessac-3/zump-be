@@ -2,6 +2,7 @@
 // - 태그 정책: 순수 semver(X.Y.Z) + latest
 // - 옵션: PUSH_IMMUTABLE=true 로 두면 X.Y.Z-<sha>도 함께 푸시
 // - Argo CD Image Updater는 allow-tags=regexp:^\\d+\\.\\d+\\.\\d+$ 와 찰떡궁합
+// - Git 태그는 사용하지 않고, Docker Hub 레지스트리의 기존 태그를 기반으로 버전을 올립니다.
 
 pipeline {
   agent {
@@ -70,6 +71,11 @@ spec:
   options {
     disableConcurrentBuilds()
     skipDefaultCheckout(true)
+    timestamps()
+  }
+
+  parameters {
+    choice(name: 'BUMP', choices: ['patch', 'minor', 'major'], description: '도커 레포 기준으로 올릴 버전 종류')
   }
 
   environment {
@@ -80,6 +86,7 @@ spec:
   }
 
   stages {
+
     stage('Checkout') {
       steps {
         checkout(scm)
@@ -92,23 +99,102 @@ spec:
       }
     }
 
-    stage('Resolve Version (semver only)') {
+    // 🔎 Docker Hub 레포의 태그 목록을 읽어 다음 semver를 계산
+    stage('Resolve Version from Registry (semver bump)') {
       steps {
-        container('git') {
+        container('python') {
           script {
-            def ver = sh(
-              script: "git describe --tags --match '[0-9]*.[0-9]*.[0-9]*' --abbrev=0 2>/dev/null || echo 1.0.0",
-              returnStdout: true
-            ).trim()
-            ver = ver.replaceFirst('^v','')
-            def sha = sh(script: "git rev-parse --short HEAD", returnStdout: true).trim()
+            def nextVer = sh(
+              label: 'Compute next semver from Docker Hub',
+              returnStdout: true,
+              script: '''
+                set -euo pipefail
 
-            env.VERSION         = ver
+                IMAGE_BASE="${IMAGE_BASE}"
+                REPO="${IMAGE_BASE#docker.io/}"  # ex) sessaczump/zump-api-amd64
+                NS="${REPO%%/*}"
+                NAME="${REPO#*/}"
+                BUMP_KIND="${BUMP:-patch}"
+
+                python3 - <<'PY'
+import os, sys, json, urllib.request, urllib.error, re
+
+ns   = os.environ["NS"]
+name = os.environ["NAME"]
+bump = os.environ.get("BUMP_KIND","patch").lower()
+
+SEMVER = re.compile(r"^(\\d+)\\.(\\d+)\\.(\\d+)$")
+
+def fetch_all_tags():
+    tags = []
+    url = f"https://hub.docker.com/v2/repositories/{ns}/{name}/tags?page_size=100&ordering=last_updated"
+    while url:
+        try:
+            with urllib.request.urlopen(url, timeout=15) as r:
+                data = json.load(r)
+        except Exception as e:
+            # 공개 레포가 아닐 수 있음 — 기본 시작 버전으로 진행
+            print("1.0.0")
+            return None
+        for it in data.get("results", []):
+            t = it.get("name")
+            if isinstance(t, str):
+                tags.append(t)
+        url = data.get("next")
+    return tags
+
+def max_semver(tags):
+    good = []
+    for t in tags:
+        m = SEMVER.match(t)
+        if m:
+            good.append(tuple(map(int, m.groups())))
+    if not good:
+        return (1,0,0)  # 초기 시작값
+    return max(good)
+
+tags = fetch_all_tags()
+if tags is None:
+    # API 실패 시 안전하게 초기값 사용
+    base = (1,0,0)
+else:
+    base = max_semver(tags)
+
+major, minor, patch = base
+
+if bump == "patch":
+    patch += 1
+elif bump == "minor":
+    minor += 1; patch = 0
+elif bump == "major":
+    major += 1; minor = 0; patch = 0
+else:
+    patch += 1
+
+candidate = f"{major}.{minor}.{patch}"
+
+# 이미 존재하면 patch를 올리며 비어있는 슬롯을 탐색
+if tags:
+    used = set(t for t in tags if SEMVER.match(t))
+    cmaj, cmin, cpat = major, minor, patch
+    while candidate in used:
+        cpat += 1
+        candidate = f"{cmaj}.{cmin}.{cpat}"
+
+print(candidate)
+PY
+              '''
+            ).trim()
+
+            def sha = sh(script: "git rev-parse --short HEAD || echo nolocalgit", returnStdout: true).trim()
+
+            env.VERSION         = nextVer                      // X.Y.Z
             env.GIT_SHA         = sha
             env.IMAGE_VERSION   = "${env.IMAGE_BASE}:${env.VERSION}"
             env.IMAGE_LATEST    = "${env.IMAGE_BASE}:latest"
             env.IMAGE_IMMUTABLE = "${env.IMAGE_BASE}:${env.VERSION}-${env.GIT_SHA}"
-            echo "✔ Resolved Version: ${env.VERSION}, SHA: ${env.GIT_SHA}"
+
+            echo "✔ Next version from registry: ${env.VERSION} (bump=${params.BUMP})"
           }
         }
       }
@@ -177,6 +263,9 @@ spec:
         container('buildah') {
           sh '''
             set -euxo pipefail
+
+            # 존재 여부를 한 번 더 확인(희박하지만 경쟁상황 방지)
+            # Docker Hub API에서 방금 계산한 VERSION이 이미 생겼다면 실패 처리하거나 patch++ 로직을 추가할 수 있습니다.
             for TAG in "${IMAGE_VERSION}" "${IMAGE_LATEST}"; do
               echo "📤 Pushing $TAG"
               buildah push "$TAG"
@@ -194,10 +283,7 @@ spec:
 
   post {
     success {
-      // ⬇⬇⬇ 여기 메시지에서 정규식의 백슬래시를 이스케이프했습니다.
-      echo '✅ 빌드/푸시 성공 — Argo CD Image Updater가 정규식 ^\\d+\\.\\d+\\.\\d+$ 에 맞는 최신 태그를 감지합니다.'
-      // 또는 멀티라인 문자열 사용도 가능:
-      // echo '''✅ 빌드/푸시 성공 — Argo CD Image Updater가 정규식 ^\d+\.\d+\.\d+$ 에 맞는 최신 태그를 감지합니다.'''
+      echo '✅ 빌드/푸시 성공 — Docker Hub 기준 semver 자동 상승 완료. AIU가 ^\\d+\\.\\d+\\.\\d+$ 최신 태그를 감지합니다.'
     }
     failure {
       echo '❌ 빌드 실패 — 콘솔 로그를 확인하세요.'
