@@ -73,7 +73,7 @@ spec:
           env.GIT_SHA  = sha
           env.IMAGE_LATEST   = "${env.IMAGE_BASE}:latest"
           env.IMAGE_VERSION  = "${env.IMAGE_BASE}:${env.VERSION}"
-          env.IMAGE_IMMUTABLE= "${env.IMAGE_BASE}:${env.VERSION}+${env.GIT_SHA}"
++         env.IMAGE_IMMUTABLE= "${env.IMAGE_BASE}:${env.VERSION}-${env.GIT_SHA}"  // '+' 금지 → '-' 사용
           echo "Version: ${env.VERSION}, SHA: ${env.GIT_SHA}"
         }
       }
