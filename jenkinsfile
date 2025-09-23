@@ -83,9 +83,7 @@ spec:
   stages {
     stage('Checkout') {
       steps {
-        // Jenkins SCM 플러그인으로 체크아웃 (태그 정보 포함)
         checkout(scm)
-        // 필요 시 origin 태그 최신화
         container('git') {
           sh '''
             set -euxo pipefail
@@ -99,22 +97,18 @@ spec:
       steps {
         container('git') {
           script {
-            // 숫자.숫자.숫자 형태의 최신 태그만 선택, 없으면 1.0.0
             def ver = sh(
               script: "git describe --tags --match '[0-9]*.[0-9]*.[0-9]*' --abbrev=0 2>/dev/null || echo 1.0.0",
               returnStdout: true
             ).trim()
-            // 혹시 v접두 태그를 쓴다면 제거 (여기선 순수 semver만 허용)
             ver = ver.replaceFirst('^v','')
-
             def sha = sh(script: "git rev-parse --short HEAD", returnStdout: true).trim()
 
-            env.VERSION        = ver                      // e.g., 1.0.1
-            env.GIT_SHA        = sha                      // e.g., ac83cc4
-            env.IMAGE_VERSION  = "${env.IMAGE_BASE}:${env.VERSION}"
-            env.IMAGE_LATEST   = "${env.IMAGE_BASE}:latest"
-            env.IMAGE_IMMUTABLE= "${env.IMAGE_BASE}:${env.VERSION}-${env.GIT_SHA}" // 옵션
-
+            env.VERSION         = ver
+            env.GIT_SHA         = sha
+            env.IMAGE_VERSION   = "${env.IMAGE_BASE}:${env.VERSION}"
+            env.IMAGE_LATEST    = "${env.IMAGE_BASE}:latest"
+            env.IMAGE_IMMUTABLE = "${env.IMAGE_BASE}:${env.VERSION}-${env.GIT_SHA}"
             echo "✔ Resolved Version: ${env.VERSION}, SHA: ${env.GIT_SHA}"
           }
         }
@@ -132,11 +126,9 @@ spec:
             pip install --upgrade pip
             if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
 
-            # 간단 문법/구조 검사
             if [ -f main.py ]; then python -m py_compile main.py; fi
             find . -name "*.py" -print0 | xargs -0 -I{} python -m py_compile "{}" || true
 
-            # 선택적 빌드 검증 테스트
             if [ -f tests/test_build_validation.py ]; then python -m pytest tests/test_build_validation.py -v --tb=short; fi
             echo "✔ Python checks passed"
           '''
@@ -166,13 +158,10 @@ spec:
             buildah info || true
 
             echo "🔨 Build ${IMAGE_VERSION}"
-            # docker 포맷으로 빌드(Docker Hub 호환)
             buildah bud --format docker -f Dockerfile -t "${IMAGE_VERSION}" .
 
-            # latest 태그 추가
             buildah tag "${IMAGE_VERSION}" "${IMAGE_LATEST}"
 
-            # (옵션) 불변 태그도 로컬에 추가만 해둠
             if [ "${PUSH_IMMUTABLE}" = "true" ]; then
               buildah tag "${IMAGE_VERSION}" "${IMAGE_IMMUTABLE}"
             fi
@@ -189,13 +178,11 @@ spec:
         container('buildah') {
           sh '''
             set -euxo pipefail
-            # 순수 semver + latest 푸시
             for TAG in "${IMAGE_VERSION}" "${IMAGE_LATEST}"; do
               echo "📤 Pushing $TAG"
               buildah push "$TAG"
             done
 
-            # (옵션) 불변 태그도 푸시
             if [ "${PUSH_IMMUTABLE}" = "true" ]; then
               echo "📤 Pushing ${IMAGE_IMMUTABLE}"
               buildah push "${IMAGE_IMMUTABLE}"
@@ -208,7 +195,10 @@ spec:
 
   post {
     success {
-      echo '✅ 빌드/푸시 성공 — Argo CD Image Updater가 `^\d+\.\d+\.\d+$`에 맞는 최신 태그를 감지합니다.'
+      // ⬇⬇⬇ 여기 메시지에서 정규식의 백슬래시를 이스케이프했습니다.
+      echo '✅ 빌드/푸시 성공 — Argo CD Image Updater가 정규식 ^\\d+\\.\\d+\\.\\d+$ 에 맞는 최신 태그를 감지합니다.'
+      // 또는 멀티라인 문자열 사용도 가능:
+      // echo '''✅ 빌드/푸시 성공 — Argo CD Image Updater가 정규식 ^\d+\.\d+\.\d+$ 에 맞는 최신 태그를 감지합니다.'''
     }
     failure {
       echo '❌ 빌드 실패 — 콘솔 로그를 확인하세요.'
@@ -218,7 +208,6 @@ spec:
         sh '''
           set +e
           buildah logout ${REGISTRY} || true
-          # 로컬 이미지 정리(선택)
           buildah rmi -f "${IMAGE_VERSION}" "${IMAGE_LATEST}" "${IMAGE_IMMUTABLE}" 2>/dev/null || true
         '''
       }
