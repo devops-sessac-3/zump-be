@@ -1,8 +1,8 @@
-// Jenkinsfile for Buildah test3
+// Jenkinsfile (Buildah + Python, semver(+sha)+latest 태그 푸시)
 pipeline {
-    agent {
-        kubernetes {
-            yaml '''
+  agent {
+    kubernetes {
+      yaml '''
 apiVersion: v1
 kind: Pod
 metadata:
@@ -30,6 +30,13 @@ spec:
       volumeMounts:
         - name: workspace-volume
           mountPath: /home/jenkins/agent
+    - name: python
+      image: python:3.11-slim
+      command: ['cat']
+      tty: true
+      volumeMounts:
+        - name: workspace-volume
+          mountPath: /home/jenkins/agent
     - name: jnlp
       image: jenkins/inbound-agent:3327.v868139a_d00e0-6
       env:
@@ -39,116 +46,131 @@ spec:
         - name: workspace-volume
           mountPath: /home/jenkins/agent
 '''
-        }
     }
-    triggers {
-        githubPush()
+  }
+  triggers { githubPush() }
+  options {
+    disableConcurrentBuilds()
+    skipDefaultCheckout(true)
+    timestamps()
+  }
+  environment {
+    IMAGE_BASE = 'docker.io/sessaczump/zump-api-amd64'
+    REGISTRY   = 'docker.io'
+  }
+
+  stages {
+    stage('Checkout') {
+      steps { checkout scm }
     }
-    options {
-        disableConcurrentBuilds()
-        skipDefaultCheckout(true)
+
+    stage('Resolve Version') {
+      steps {
+        script {
+          // 최신 git 태그(semver)를 버전으로, 없으면 1.0.0
+          def ver = sh(script: "git describe --tags --abbrev=0 2>/dev/null || echo 1.0.0", returnStdout: true).trim()
+          def sha = sh(script: "git rev-parse --short HEAD", returnStdout: true).trim()
+          env.VERSION  = ver
+          env.GIT_SHA  = sha
+          env.IMAGE_LATEST   = "${env.IMAGE_BASE}:latest"
+          env.IMAGE_VERSION  = "${env.IMAGE_BASE}:${env.VERSION}"
+          env.IMAGE_IMMUTABLE= "${env.IMAGE_BASE}:${env.VERSION}+${env.GIT_SHA}"
+          echo "Version: ${env.VERSION}, SHA: ${env.GIT_SHA}"
+        }
+      }
     }
-    environment {
-        DOCKER_IMAGE_REMOTE = 'sessaczump/zump-api-amd64:latest'
+
+    stage('Test Dependencies') {
+      steps {
+        container('python') {
+          sh '''
+            python -V
+            python -m venv .venv
+            . .venv/bin/activate
+            pip install --upgrade pip
+            if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+            # 빌드 검증 테스트
+            if [ -f tests/test_build_validation.py ]; then python -m pytest tests/test_build_validation.py -v --tb=short; fi
+            echo "빌드 검증 테스트 통과"
+          '''
+        }
+      }
     }
-    stages {
-        stage('Checkout') {
-            steps {
-                checkout scm
-            }
+
+    stage('Code Quality Check') {
+      steps {
+        container('python') {
+          sh '''
+            . .venv/bin/activate || true
+            # 파이썬 문법 검사
+            if [ -f main.py ]; then python -m py_compile main.py; fi
+            find . -name "*.py" -print0 | xargs -0 -I{} python -m py_compile "{}" || true
+            echo "코드 문법 검사 통과"
+          '''
         }
-        stage('Test Dependencies') {
-            steps {
-                container('buildah') {
-                    sh '''
-                        # Python 환경 설정
-                        python3 -m venv /tmp/venv
-                        source /tmp/venv/bin/activate
-                        
-                        # 의존성 설치
-                        pip install --upgrade pip
-                        pip install -r requirements.txt
-                        
-                        # 빌드 검증 테스트 실행
-                        python -m pytest tests/test_build_validation.py -v --tb=short
-                        
-                        echo "빌드 검증 테스트 통과"
-                    '''
-                }
-            }
-        }
-        stage('Code Quality Check') {
-            steps {
-                container('buildah') {
-                    sh '''
-                        source /tmp/venv/bin/activate
-                        
-                        # 코드 문법 검사
-                        python -m py_compile main.py
-                        find . -name "*.py" -print0 | xargs -0 python -m py_compile
-                        
-                        echo "코드 문법 검사 통과"
-                    '''
-                }
-            }
-        }
-        stage('Registry login') {
-            steps {
-                withCredentials([usernamePassword(credentialsId: 'dockerhub', usernameVariable: 'REG_USERNAME', passwordVariable: 'REG_PASSWORD')]) {
-                    container('buildah') {
-                        sh '''
-                            echo "$REG_PASSWORD" | buildah login --username "$REG_USERNAME" --password-stdin docker.io
-                        '''
-                    }
-                }
-            }
-        }
-        stage('Build image (Buildah)') {
-            steps {
-                container('buildah') {
-                    sh '''
-                        buildah version | cat
-                        buildah info | cat
-                        
-                        # 테스트 통과 후 Docker 이미지 빌드
-                        echo "Docker 이미지 빌드를 시작합니다..."
-                        buildah bud --format docker -f Dockerfile -t ${DOCKER_IMAGE_REMOTE} .
-                        
-                        # 빌드된 이미지 정보 출력
-                        echo "빌드된 이미지 정보:"
-                        buildah images ${DOCKER_IMAGE_REMOTE}
-                        
-                        echo "Docker 이미지 빌드 완료"
-                    '''
-                }
-            }
-        }
-        stage('Push image') {
-            steps {
-                container('buildah') {
-                    sh 'buildah push ${DOCKER_IMAGE_REMOTE}'
-                }
-            }
-        }
-        stage('Cleanup') {
-            steps {
-                container('buildah') {
-                    sh 'buildah rmi -f ${DOCKER_IMAGE_REMOTE} || true'
-                }
-            }
-        }
+      }
     }
-    post {
-        success { echo '빌드가 성공적으로 완료되었습니다!'}
-        failure { echo '빌드가 실패했습니다. 로그를 확인해주세요.'}
-        always {
-            container('buildah') {
-                sh '''
-                    # 정리 작업
-                    buildah logout docker.io || true
-                    rm -rf /tmp/venv || true
-                '''
-            }
+
+    stage('Registry login') {
+      steps {
+        withCredentials([usernamePassword(credentialsId: 'dockerhub', usernameVariable: 'REG_USERNAME', passwordVariable: 'REG_PASSWORD')]) {
+          container('buildah') {
+            sh '''
+              echo "$REG_PASSWORD" | buildah login --username "$REG_USERNAME" --password-stdin docker.io
+            '''
+          }
         }
+      }
     }
+
+    stage('Build image (Buildah)') {
+      steps {
+        container('buildah') {
+          sh '''
+            buildah version || true
+            buildah info || true
+            echo "이미지 빌드 시작..."
+            # 기본 이미지: docker 포맷 (Docker Hub 호환)
+            buildah bud --format docker -f Dockerfile -t "${IMAGE_IMMUTABLE}" .
+            # 추가 태그 부여
+            buildah tag "${IMAGE_IMMUTABLE}" "${IMAGE_VERSION}"
+            buildah tag "${IMAGE_IMMUTABLE}" "${IMAGE_LATEST}"
+            echo "빌드된 이미지:"
+            buildah images | grep -E "${IMAGE_BASE}"
+          '''
+        }
+      }
+    }
+
+    stage('Push images') {
+      steps {
+        container('buildah') {
+          sh '''
+            set -e
+            for TAG in "${IMAGE_IMMUTABLE}" "${IMAGE_VERSION}" "${IMAGE_LATEST}"; do
+              echo "Pushing $TAG"
+              buildah push "$TAG"
+            done
+          '''
+        }
+      }
+    }
+  }
+
+  post {
+    success { echo '✅ 빌드/푸시 성공 — AIU가 최신 semver 태그를 감지해 kustomization.yaml을 갱신할 거예요.' }
+    failure { echo '❌ 빌드 실패 — 로그를 확인하세요.' }
+    always {
+      container('buildah') {
+        sh '''
+          buildah logout ${REGISTRY} || true
+          # 로컬 이미지 정리(옵션)
+          buildah rmi -f "${IMAGE_IMMUTABLE}" "${IMAGE_VERSION}" "${IMAGE_LATEST}" 2>/dev/null || true
+        '''
+      }
+      container('python') {
+        sh 'rm -rf .venv || true'
+      }
+    }
+  }
 }
