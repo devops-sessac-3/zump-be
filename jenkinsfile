@@ -52,7 +52,6 @@ spec:
   options {
     disableConcurrentBuilds()
     skipDefaultCheckout(true)
-    // timestamps()
   }
   environment {
     IMAGE_BASE = 'docker.io/sessaczump/zump-api-amd64'
