@@ -1,7 +1,6 @@
 // Jenkinsfile — Buildah + Python
 // - 태그 정책: 순수 semver(X.Y.Z) + latest
 // - 옵션: PUSH_IMMUTABLE=true 로 두면 X.Y.Z-<sha>도 함께 푸시
-// - Argo CD Image Updater는 allow-tags=regexp:^\\d+\\.\\d+\\.\\d+$ 와 찰떡궁합
 // - Git 태그는 사용하지 않고, Docker Hub 레지스트리의 기존 태그를 기반으로 버전을 올립니다.
 
 pipeline {
@@ -71,6 +70,7 @@ spec:
   options {
     disableConcurrentBuilds()
     skipDefaultCheckout(true)
+    timestamps()
   }
 
   parameters {
@@ -98,7 +98,7 @@ spec:
       }
     }
 
-    // 🔎 Docker Hub 레포의 태그 목록을 읽어 다음 semver를 계산
+    // 🔎 Docker Hub 레포의 태그 목록을 읽어 다음 semver 계산
     stage('Resolve Version from Registry (semver bump)') {
       steps {
         container('python') {
@@ -115,11 +115,14 @@ spec:
                 NAME="${REPO#*/}"
                 BUMP_KIND="${BUMP:-patch}"
 
+                # ✅ 하위 프로세스(python)에 전달
+                export NS NAME BUMP_KIND
+
                 python3 - <<'PY'
 import os, sys, json, urllib.request, urllib.error, re
 
-ns   = os.environ["NS"]
-name = os.environ["NAME"]
+ns   = os.environ.get("NS")
+name = os.environ.get("NAME")
 bump = os.environ.get("BUMP_KIND","patch").lower()
 
 SEMVER = re.compile(r"^(\\d+)\\.(\\d+)\\.(\\d+)$")
@@ -131,10 +134,10 @@ def fetch_all_tags():
         try:
             with urllib.request.urlopen(url, timeout=15) as r:
                 data = json.load(r)
-        except Exception as e:
-            # 공개 레포가 아닐 수 있음 — 기본 시작 버전으로 진행
+        except Exception:
+            # 공개레포가 아니거나 네트워크 이슈 → 기본 시작값으로 진행
             print("1.0.0")
-            return None
+            sys.exit(0)
         for it in data.get("results", []):
             t = it.get("name")
             if isinstance(t, str):
@@ -153,13 +156,7 @@ def max_semver(tags):
     return max(good)
 
 tags = fetch_all_tags()
-if tags is None:
-    # API 실패 시 안전하게 초기값 사용
-    base = (1,0,0)
-else:
-    base = max_semver(tags)
-
-major, minor, patch = base
+major, minor, patch = max_semver(tags)
 
 if bump == "patch":
     patch += 1
@@ -172,9 +169,9 @@ else:
 
 candidate = f"{major}.{minor}.{patch}"
 
-# 이미 존재하면 patch를 올리며 비어있는 슬롯을 탐색
+# 이미 존재하면 빈 슬롯 나올 때까지 patch++
 if tags:
-    used = set(t for t in tags if SEMVER.match(t))
+    used = {t for t in tags if SEMVER.match(t)}
     cmaj, cmin, cpat = major, minor, patch
     while candidate in used:
         cpat += 1
@@ -262,9 +259,6 @@ PY
         container('buildah') {
           sh '''
             set -euxo pipefail
-
-            # 존재 여부를 한 번 더 확인(희박하지만 경쟁상황 방지)
-            # Docker Hub API에서 방금 계산한 VERSION이 이미 생겼다면 실패 처리하거나 patch++ 로직을 추가할 수 있습니다.
             for TAG in "${IMAGE_VERSION}" "${IMAGE_LATEST}"; do
               echo "📤 Pushing $TAG"
               buildah push "$TAG"
