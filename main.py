@@ -7,7 +7,11 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from prometheus_fastapi_instrumentator import Instrumentator
 
-# ... (중략: sys.path/routers/utils/config 동일)
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from routers import concert_router, healthcheck_router, queue_router, sse_router, user_router
+from services.queue_consumer import start_embedded_consumer, stop_embedded_consumer
+from utils import exception
+from utils.config import config
 
 api_config = config.get_config("API_SETTING")
 logger = logging.getLogger("zump")
