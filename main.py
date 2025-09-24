@@ -1,71 +1,88 @@
-#####################################################################
-# Zump API Main
-# 실행 : uvicorn main:app --reload 
-# Swagger : http://127.0.0.1:8080/docs
-# ReDoc : http://127.0.0.1:8080/redoc
-#####################################################################
-
-import os
-import sys
+# main.py
+import os, sys, logging, asyncio
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from prometheus_fastapi_instrumentator import Instrumentator
 
-# 로컬 모듈이 전역 패키지보다 우선하도록 최상단에 삽입
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from routers import concert_router  # 공연 관련 API 라우터 (예: /concerts)
-from routers import healthcheck_router  # 헬스체크 API 라우터
-from routers import queue_router
-from routers import sse_router
-from routers import user_router  # 회원 관련 API 라우터 (예: /auth/signup)
+from routers import concert_router, healthcheck_router, queue_router, sse_router, user_router
 from services.queue_consumer import start_embedded_consumer, stop_embedded_consumer
 from utils import exception
 from utils.config import config
 
 api_config = config.get_config("API_SETTING")
+logger = logging.getLogger("zump")
 
-# FastAPI 앱 생성
+def _has_route(app: FastAPI, path: str) -> bool:
+    return any(getattr(r, "path", None) == path for r in app.router.routes)
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # === startup ===
+    logger.info("애플리케이션 시작")
+    # /metrics: 중복 등록 방지
+    try:
+        if not _has_route(app, "/metrics"):
+            Instrumentator().instrument(app).expose(
+                app,
+                endpoint="/metrics",
+                include_in_schema=False,
+            )
+    except Exception:
+        logger.exception("metrics 초기화 실패")
+
+    # 컨슈머: 블로킹이면 백그라운드로
+    app.state.consumer_task = None
+    if os.getenv("EMBEDDED_CONSUMER", "true").lower() in ("1", "true", "yes"):
+        try:
+            loop = asyncio.get_running_loop()
+            # start_embedded_consumer가 동기라면 to_thread로, 코루틴이라면 create_task로
+            if asyncio.iscoroutinefunction(start_embedded_consumer):
+                app.state.consumer_task = loop.create_task(start_embedded_consumer())
+            else:
+                app.state.consumer_task = loop.run_in_executor(None, start_embedded_consumer)
+        except Exception:
+            logger.exception("embedded consumer 시작 실패")
+
+    yield
+
+    # === shutdown ===
+    logger.info("애플리케이션 종료")
+    try:
+        if os.getenv("EMBEDDED_CONSUMER", "true").lower() in ("1", "true", "yes"):
+            # stop이 코루틴이면 await, 아니면 스레드에서 실행
+            if asyncio.iscoroutinefunction(stop_embedded_consumer):
+                await stop_embedded_consumer()
+            else:
+                await asyncio.get_running_loop().run_in_executor(None, stop_embedded_consumer)
+    except Exception:
+        logger.exception("embedded consumer 종료 실패")
+
 app = FastAPI(
     title=api_config["TITLE"],
     description=api_config["DESCRIPTION"],
     version=api_config["VERSION"],
+    lifespan=lifespan,  # ✅ 여기로 이관
 )
 
-# 미들웨어
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # 운영 환경에서는 특정 도메인만 허용 권장
-    allow_credentials=True,
+    allow_origins=["*"],
+    allow_credentials=True,   # 운영 환경에선 구체 원본을 권장
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# 라우터 등록
-app.include_router(user_router.router)   # 회원가입/로그인 관련 API 라우터
-app.include_router(concert_router.router)  # 공연 리스트/상세 API 라우터
-app.include_router(healthcheck_router.router)  # 헬스체크 API 라우터
-app.include_router(queue_router.router)  # 대기열 enqueue API
-app.include_router(sse_router.router)    # 대기열 SSE API
-
-# 애플리케이션 라이프사이클 훅
-@app.on_event("startup")
-async def on_startup():
-    print("애플리케이션 시작")
-    # 내장 컨슈머 옵션 (API 프로세스 내 소비)
-    if os.getenv("EMBEDDED_CONSUMER", "true").lower() in ("1", "true", "yes"): 
-        start_embedded_consumer()
-    Instrumentator().instrument(app).expose(app, endpoint="/metrics")
-
-
-
-@app.on_event("shutdown")
-async def on_shutdown():
-    print("애플리케이션 종료")
-    if os.getenv("EMBEDDED_CONSUMER", "true").lower() in ("1", "true", "yes"):
-        await stop_embedded_consumer()
+# 라우터
+app.include_router(user_router.router)
+app.include_router(concert_router.router)
+app.include_router(healthcheck_router.router)
+app.include_router(queue_router.router)
+app.include_router(sse_router.router)
 
 # 글로벌 예외 처리
 @app.exception_handler(RequestValidationError)
