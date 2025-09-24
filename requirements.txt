@@ -43,5 +43,5 @@ httpx==0.28.1
 requests==2.32.3
 
 # 모니터링 의존성
-prometheus-client
-prometheus-fastapi-instrumentator
+prometheus-client==0.20.0
+prometheus-fastapi-instrumentator==6.1.0
