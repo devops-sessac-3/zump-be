@@ -21,12 +21,12 @@ def _has_route(app: FastAPI, path: str) -> bool:
     return any(getattr(r, "path", None) == path for r in app.router.routes)
 
 async def _init_metrics_once(app: FastAPI):
-    if not _has_route(app, "/metrics"):
-        Instrumentator().instrument(app).expose(
-            app,
-            endpoint="/metrics",
-            include_in_schema=False,
-        )
+    # 이미 /metrics가 있으면 패스
+    if _has_route(app, "/metrics"):
+        return
+    # 반드시 instrument -> expose 순서
+    instrumentator.instrument(app)
+    instrumentator.expose(app, endpoint="/metrics", include_in_schema=False)
 
 async def _start_consumer_async(app: FastAPI):
     app.state.consumer_task = None
