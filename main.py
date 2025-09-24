@@ -11,6 +11,7 @@ import sys
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
+from prometheus_fastapi_instrumentator import Instrumentator
 
 # 로컬 모듈이 전역 패키지보다 우선하도록 최상단에 삽입
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -56,6 +57,8 @@ async def on_startup():
     # 내장 컨슈머 옵션 (API 프로세스 내 소비)
     if os.getenv("EMBEDDED_CONSUMER", "true").lower() in ("1", "true", "yes"): 
         start_embedded_consumer()
+    Instrumentator().instrument(app).expose(app, endpoint="/metrics")
+
 
 
 @app.on_event("shutdown")
