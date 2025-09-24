@@ -15,6 +15,7 @@ from utils.config import config
 
 api_config = config.get_config("API_SETTING")
 logger = logging.getLogger("zump")
+instrumentator = Instrumentator()  # ✅ 싱글톤
 
 def _has_route(app: FastAPI, path: str) -> bool:
     return any(getattr(r, "path", None) == path for r in app.router.routes)
