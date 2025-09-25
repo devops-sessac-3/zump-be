@@ -31,12 +31,12 @@
       "CLIENT_ID": "zump-api"
     },
     "QUEUE": {
-      "DEQUEUE_PER_SEC": 10,
-      "GATE_MODE": "auto",          
+      "DEQUEUE_PER_SEC": 5,                
+      "GATE_MODE": "auto",
       "ADMIT_WINDOW": 1,
-      "AUTO_QUEUE_SIZE_THRESHOLD": 100,
-      "AUTO_ENQUEUE_RATE_PER_SEC": 20,
-      "AUTO_TOGGLE_COOLDOWN_MS": 5000,
-      "BLOCKING_DETAIL_WAIT_MS": 0
-    }
+      "AUTO_QUEUE_SIZE_THRESHOLD": 10,
+      "AUTO_ENQUEUE_RATE_PER_SEC": 4,      
+      "AUTO_TOGGLE_COOLDOWN_MS": 3000,
+        "BLOCKING_DETAIL_WAIT_MS": 0
+      }
 }
