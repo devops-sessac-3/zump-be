@@ -38,38 +38,31 @@ def _has_route(app: FastAPI, path: str) -> bool:
 # -------------------------------
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # === startup ===
     logger.info("애플리케이션 시작")
-    # 여기서는 instrument() 호출 금지(이미 앱 생성 직후 적용됨)
-    # 필요 시 /metrics 라우트만 보충 노출
+
+    # /metrics 노출 가드
     try:
         if not _has_route(app, "/metrics"):
             instrumentator.expose(app, endpoint="/metrics", include_in_schema=False)
     except Exception:
         logger.exception("metrics expose 실패")
 
-    # 임베디드 컨슈머 시작(동기/비동기 모두 지원)
+    # ✅ 임베디드 컨슈머 시작: 그냥 호출만!
     try:
-        app.state.consumer_task = None
         if os.getenv("EMBEDDED_CONSUMER", "true").lower() in ("1", "true", "yes"):
-            loop = asyncio.get_running_loop()
-            if asyncio.iscoroutinefunction(start_embedded_consumer):
-                app.state.consumer_task = loop.create_task(start_embedded_consumer())
-            else:
-                app.state.consumer_task = loop.run_in_executor(None, start_embedded_consumer)
+            # start_embedded_consumer 는 동기 함수이며 내부에서 create_task 를 호출함
+            start_embedded_consumer()
+            logger.info("embedded consumer started")
     except Exception:
         logger.exception("embedded consumer 시작 실패")
 
     yield
 
-    # === shutdown ===
     logger.info("애플리케이션 종료")
     try:
         if os.getenv("EMBEDDED_CONSUMER", "true").lower() in ("1", "true", "yes"):
-            if asyncio.iscoroutinefunction(stop_embedded_consumer):
-                await stop_embedded_consumer()
-            else:
-                await asyncio.get_running_loop().run_in_executor(None, stop_embedded_consumer)
+            await stop_embedded_consumer()
+            logger.info("embedded consumer stopped")
     except Exception:
         logger.exception("embedded consumer 종료 실패")
 
@@ -97,28 +90,22 @@ if not _has_route(app, "/metrics"):
 @app.on_event("startup")
 async def on_startup():
     try:
-        # instrument()는 절대 호출하지 말 것!
         if not _has_route(app, "/metrics"):
             instrumentator.expose(app, endpoint="/metrics", include_in_schema=False)
-
-        # lifespan과 중복 호출되어도 안전(동기/비동기 보호)
-        if os.getenv("EMBEDDED_CONSUMER", "true").lower() in ("1", "true", "yes"):
-            loop = asyncio.get_running_loop()
-            if asyncio.iscoroutinefunction(start_embedded_consumer):
-                app.state.consumer_task = loop.create_task(start_embedded_consumer())
-            else:
-                app.state.consumer_task = loop.run_in_executor(None, start_embedded_consumer)
     except Exception:
         logger.exception("on_event(startup) 처리 실패")
 
 @app.on_event("shutdown")
-async def on_shutdown():
+async def on_shutdown() -> None:
+    """FastAPI on_event(shutdown) 훅.
+    컨슈머 종료는 lifespan에서만 수행하므로, 여기서는 No-Op로 둡니다.
+    (이중 종료를 방지하기 위함)
+    """
     try:
-        if os.getenv("EMBEDDED_CONSUMER", "true").lower() in ("1", "true", "yes"):
-            if asyncio.iscoroutinefunction(stop_embedded_consumer):
-                await stop_embedded_consumer()
-            else:
-                await asyncio.get_running_loop().run_in_executor(None, stop_embedded_consumer)
+        logger.info("on_event(shutdown) called (no-op; consumer stop is handled in lifespan)")
+        # Instrumentator는 별도 shutdown 절차 없음. 추가 작업 불필요.
+        # 기타 리소스 정리는 lifespan의 'yield' 이후 블록에서 수행합니다.
+        return
     except Exception:
         logger.exception("on_event(shutdown) 처리 실패")
 
