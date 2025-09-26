@@ -42,20 +42,32 @@ async def check_db(db: AsyncSession, timeout_sec: float = 2.0) -> dict:
         return {"status": "down", "error": str(e)}
 
 
+# healthcheck_router.py 내 check_redis를 이렇게 살짝 확장
 async def check_redis(timeout_sec: float = 2.0) -> dict:
     try:
         async with asyncio.timeout(timeout_sec):
             ok = await redis_client.ping()
             if not ok:
                 return {"status": "down", "error": "PING failed"}
-            # 짧은 echo 테스트(선택)
             key = "__health:redis__"
             now = datetime.utcnow().isoformat()
             await redis_client.redis.set(key, now, ex=5)
             val = await redis_client.redis.get(key)
-        return {"status": "up", "echo": val}
+
+            info = await redis_client.redis.info()  # ← 추가
+            # 최소한의 연결 정보만 노출
+            return {
+                "status": "up",
+                "echo": val,
+                "redis": {
+                    "server": f"{config.get_config('REDIS').get('HOST')}:{config.get_config('REDIS').get('PORT')}",
+                    "db": int(info.get("db0", {}).get("keys", 0)) if isinstance(info.get("db0"), dict) else "n/a",
+                    "role": info.get("role"),
+                },
+            }
     except Exception as e:
         return {"status": "down", "error": str(e)}
+
 
 
 async def check_kafka(timeout_sec: float = 3.0) -> dict:

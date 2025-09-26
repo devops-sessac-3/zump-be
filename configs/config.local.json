@@ -1,25 +1,42 @@
 {
-    "DEBUG_MODE": true,
-    "KAFKA": {
-        "BOOTSTRAP_SERVERS": "localhost:19092"
-    },
-    "REDIS": {
-        "HOST": "localhost",
-        "PORT": 6379,
-        "DB": 0
-    },
-    "DATABASE_ZUMP": {
-        "HOST": "localhost",
-        "PORT": 5432
-    },
-    "QUEUE": { 
-        "DEQUEUE_PER_SEC": 10,
-        "GATE_MODE": "auto", 
-        "ADMIT_WINDOW": 1,   
-        "AUTO_QUEUE_SIZE_THRESHOLD": 100,
-        "AUTO_ENQUEUE_RATE_PER_SEC": 20,
-        "AUTO_TOGGLE_COOLDOWN_MS": 5000,
-        "BLOCKING_DETAIL_WAIT_MS": 0
-    }
+  "OAUTH": {
+    "JWT_SECRET_KEY": "dz7s088UQix+Rmt/prE7OGgXZWuZBjdefGEdSIeX5XVIzOQPbVoiNsQ8oDSLqlC+",
+    "ALGORITHM": "HS256",
+    "DEFAULT_JWT_EXPIRE_TIME": 60
+  },
+  "DEBUG_MODE": true,
+  "API_SETTING": {
+    "TITLE": "ZUMP API",
+    "DESCRIPTION": "ZUMP REST API (local-host)",
+    "VERSION": "0.0.1"
+  },
+  "DATABASE_ZUMP": {
+    "HOST": "localhost",
+    "PORT": 15432,
+    "READ_PORT": 15432,
+    "DB_NAME": "zump",
+    "USERNAME": "postgres",
+    "PASSWORD": "pass",
+    "CLIENT_ENCODING": ""
+  },
+  "REDIS": {
+    "HOST": "localhost",
+    "PORT": 6379,
+    "DB": 0
+  },
+  "KAFKA": {
+    "BOOTSTRAP_SERVERS": "localhost:19092",
+    "QUEUE_TOPIC": "concert_queue",
+    "ACKS": "all",
+    "CLIENT_ID": "zump-api"
+  },
+  "QUEUE": {
+    "DEQUEUE_PER_SEC": 0,
+    "GATE_MODE": "auto",
+    "ADMIT_WINDOW": 1,
+    "AUTO_QUEUE_SIZE_THRESHOLD": 10,
+    "AUTO_ENQUEUE_RATE_PER_SEC": 4,
+    "AUTO_TOGGLE_COOLDOWN_MS": 3000,
+    "BLOCKING_DETAIL_WAIT_MS": 0
+  }
 }
-
