@@ -38,15 +38,18 @@ class AsyncRedisClient:
     def redis(self) -> aioredis.Redis:
         return self._redis
 
+    async def ping(self) -> bool:
+        """PING 테스트(헬스체크에서 사용)."""
+        try:
+            return await self._redis.ping()
+        except Exception:
+            return False
+
     async def publish(self, channel: str, message: str) -> int:
         return await self._redis.publish(channel, message)
 
     async def subscribe_iter(self, channel: str) -> AsyncIterator[str]:
-        """해당 채널에 대한 메시지를 비동기 이터레이터로 반환.
-        사용 예:
-            async for msg in client.subscribe_iter("q:chn:concertSe"):
-                ...
-        """
+        """해당 채널에 대한 메시지를 비동기 이터레이터로 반환."""
         pubsub = self._redis.pubsub()
         await pubsub.subscribe(channel)
         try:
@@ -71,5 +74,3 @@ class AsyncRedisClient:
 
 # 전역 단일 인스턴스 접근자
 redis_client = AsyncRedisClient.instance()
-
-
