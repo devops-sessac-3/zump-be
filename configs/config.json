@@ -31,7 +31,7 @@
       "CLIENT_ID": "zump-api"
     },
     "QUEUE": {
-      "DEQUEUE_PER_SEC": 50,
+      "DEQUEUE_PER_SEC": 10,
       "GATE_MODE": "auto",          
       "ADMIT_WINDOW": 1,
       "AUTO_QUEUE_SIZE_THRESHOLD": 100,
